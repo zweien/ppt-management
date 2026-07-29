@@ -20,8 +20,9 @@ def verify_password(plain: str, hashed: str) -> bool:
 
 
 def create_access_token(subject: str | int, extra: dict[str, Any] | None = None) -> str:
+    from app.services.runtime_config import get_token_expire_minutes
     now = datetime.now(timezone.utc)
-    expire = now + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    expire = now + timedelta(minutes=get_token_expire_minutes())
     payload: dict[str, Any] = {"sub": str(subject), "iat": now, "exp": expire}
     if extra:
         payload.update(extra)

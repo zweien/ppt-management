@@ -229,6 +229,16 @@ class ModelConfig(Base, TimestampMixin):
     is_default: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
 
+# ---------- App settings (runtime-configurable, DB-backed) ----------
+
+class AppSetting(Base, TimestampMixin):
+    """运行时可调配置(key-value)。value 存 JSON 序列化值。
+    DB 无记录时 get_setting 回退到 env/默认值(安全降级)。"""
+    __tablename__ = "app_settings"
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)  # 如 "UPLOAD_MAX_SIZE_MB"
+    value: Mapped[str] = mapped_column(Text, nullable=False)        # JSON 序列化
+
+
 # ---------- Export files (phase 3, schema ready) ----------
 
 class ExportFile(Base, TimestampMixin):

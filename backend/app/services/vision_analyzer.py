@@ -106,7 +106,8 @@ def _validate(obj: dict[str, Any]) -> dict[str, Any] | None:
 def analyze_slide_image(config: ModelConfig, image_bytes: bytes) -> VisionResult:
     """对单页 PNG 做视觉分析,返回结构化 JSON。失败重试 1 次。"""
     provider = ModelProvider(config, timeout=90.0)
-    scaled = _scale_image(image_bytes, settings.VISION_IMAGE_MAX_LONG_EDGE)
+    from app.services.runtime_config import get_vision_max_long_edge
+    scaled = _scale_image(image_bytes, get_vision_max_long_edge())
 
     for attempt in range(2):
         r = provider.chat_with_image(

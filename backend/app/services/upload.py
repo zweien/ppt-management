@@ -39,13 +39,15 @@ class UploadResult:
 
 
 def _validate_pptx(filename: str, content: bytes) -> None:
+    from app.services.runtime_config import get_upload_extensions, get_upload_max_size_mb, get_zip_bomb_ratio
     # Extension
     lower = filename.lower()
-    if not any(lower.endswith(ext) for ext in settings.UPLOAD_ALLOWED_EXTENSIONS):
+    if not any(lower.endswith(ext) for ext in get_upload_extensions()):
         raise UploadError("UNSUPPORTED_EXTENSION", f"仅支持 .pptx 文件(不支持 .ppt/加密文件)")
     # Size
-    if len(content) > settings.UPLOAD_MAX_SIZE_MB * 1024 * 1024:
-        raise UploadError("FILE_TOO_LARGE", f"文件超过 {settings.UPLOAD_MAX_SIZE_MB}MB 限制")
+    max_mb = get_upload_max_size_mb()
+    if len(content) > max_mb * 1024 * 1024:
+        raise UploadError("FILE_TOO_LARGE", f"文件超过 {max_mb}MB 限制")
     # ZIP signature
     if not content.startswith(PPTX_SIG):
         raise UploadError("INVALID_ZIP", "文件不是有效的 PPTX(ZIP)文件")
@@ -65,7 +67,7 @@ def _validate_pptx(filename: str, content: bytes) -> None:
     total_uncompressed = sum(i.file_size for i in zf.infolist())
     if len(content) > 0:
         ratio = total_uncompressed / len(content)
-        if ratio > settings.ZIP_BOMB_RATIO:
+        if ratio > get_zip_bomb_ratio():
             raise UploadError("ZIP_BOMB", f"解压比过高({ratio:.0f}x),疑似 ZIP 炸弹")
     # Must contain presentation.xml to be a real pptx
     names = zf.namelist()

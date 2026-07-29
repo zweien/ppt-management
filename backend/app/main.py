@@ -13,6 +13,7 @@ from app.api.routers.jobs import router as jobs_router
 from app.api.routers.search import router as search_router
 from app.api.routers.tags import router as tags_router
 from app.api.routers.model_configs import router as model_configs_router
+from app.api.routers.settings import router as settings_router
 from app.core.config import settings
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
@@ -39,6 +40,7 @@ def create_app() -> FastAPI:
     app.include_router(search_router)
     app.include_router(tags_router)
     app.include_router(model_configs_router)
+    app.include_router(settings_router)
 
     @app.on_event("startup")
     def _startup() -> None:
@@ -50,13 +52,14 @@ def create_app() -> FastAPI:
 
     @app.get("/")
     def root() -> dict:
+        from app.services.runtime_config import get_upload_extensions, get_upload_max_size_mb
         return {
             "app": settings.APP_NAME,
             "version": settings.APP_VERSION,
             "status": "running",
             "upload_limits": {
-                "max_size_mb": settings.UPLOAD_MAX_SIZE_MB,
-                "allowed_extensions": settings.UPLOAD_ALLOWED_EXTENSIONS,
+                "max_size_mb": get_upload_max_size_mb(),
+                "allowed_extensions": get_upload_extensions(),
             },
         }
 

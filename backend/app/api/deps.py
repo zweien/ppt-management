@@ -34,3 +34,13 @@ def get_current_user(
     if not user or user.status != "active":
         raise creds_exc
     return user
+
+
+def require_superuser(user: User = Depends(get_current_user)) -> User:
+    """要求当前用户是超级管理员(is_superuser)。用于设置等管理接口。"""
+    if not user.is_superuser:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="需要管理员权限",
+        )
+    return user

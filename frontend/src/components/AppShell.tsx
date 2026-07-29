@@ -9,9 +9,9 @@ import {
   Images,
   Tag,
   Star,
-  Cpu,
   ListChecks,
   Trash2,
+  Settings,
   LogOut,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
@@ -19,6 +19,7 @@ import { fetchVersion } from "@/lib/version";
 import ThemeToggle from "./ThemeToggle";
 
 // Grouped navigation — Vercel-style IA (eyebrow section labels).
+// 「设置」(含模型配置)仅 is_superuser 显示,动态拼入系统组。
 const NAV_GROUPS: { label: string; items: { href: string; label: string; icon: React.ComponentType<{ className?: string }> }[] }[] = [
   {
     label: "资源",
@@ -38,7 +39,6 @@ const NAV_GROUPS: { label: string; items: { href: string; label: string; icon: R
   {
     label: "系统",
     items: [
-      { href: "/models", label: "模型配置", icon: Cpu },
       { href: "/jobs", label: "任务中心", icon: ListChecks },
       { href: "/trash", label: "回收站", icon: Trash2 },
     ],
@@ -48,7 +48,7 @@ const NAV_GROUPS: { label: string; items: { href: string; label: string; icon: R
 export default function AppShell({ children, title }: { children: React.ReactNode; title?: string }) {
   const router = useRouter();
   const pathname = usePathname();
-  const [user, setUser] = useState<{ username: string } | null>(null);
+  const [user, setUser] = useState<{ username: string; is_superuser?: boolean } | null>(null);
   const [version, setVersion] = useState("");
 
   useEffect(() => {
@@ -61,6 +61,15 @@ export default function AppShell({ children, title }: { children: React.ReactNod
     if (raw) setUser(JSON.parse(raw));
     fetchVersion().then(setVersion);
   }, [router]);
+
+  // 拼装最终导航:管理员在系统组加「设置」。
+  const navGroups = user?.is_superuser
+    ? NAV_GROUPS.map((g) =>
+        g.label === "系统"
+          ? { ...g, items: [{ href: "/settings", label: "设置", icon: Settings }, ...g.items] }
+          : g,
+      )
+    : NAV_GROUPS;
 
   function logout() {
     localStorage.removeItem("token");
@@ -81,7 +90,7 @@ export default function AppShell({ children, title }: { children: React.ReactNod
 
         {/* Grouped nav */}
         <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-5">
-          {NAV_GROUPS.map((group) => (
+          {navGroups.map((group) => (
             <div key={group.label}>
               <div className="px-2 mb-1.5 text-[11px] font-mono uppercase tracking-wider text-mute">
                 {group.label}

@@ -40,7 +40,8 @@ class MinerUResult:
 
 
 def _base_url() -> str:
-    return (settings.MINERU_API_URL or "http://host.docker.internal:8765").rstrip("/")
+    from app.services.runtime_config import get_mineru_url
+    return get_mineru_url().rstrip("/")
 
 
 def parse_pdf_sync(pdf_bytes: bytes, filename: str = "preview.pdf", lang: str = "ch", timeout: float = 600.0) -> MinerUResult:

@@ -1,5 +1,6 @@
 """models package."""
 from app.models.base import (
+    AppSetting,
     ExportFile,
     Favorite,
     Job,
@@ -16,6 +17,7 @@ from app.models.base import (
 )
 
 __all__ = [
+    "AppSetting",
     "ExportFile",
     "Favorite",
     "Job",
