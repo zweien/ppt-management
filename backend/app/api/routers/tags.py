@@ -58,6 +58,21 @@ def batch_add_tags(body: BatchTagBody, db: Session = Depends(get_db), user: User
     return {"detail": f"已为 {len(body.slide_ids)} 个页面添加标签"}
 
 
+@router.post("/slides/{slide_id}/tags/{tag_id}")
+def add_slide_tag(slide_id: str, tag_id: str, db: Session = Depends(get_db),
+                  user: User = Depends(get_current_user)) -> dict:
+    """给单个页面打上标签(幂等:已存在则不变更 origin)。"""
+    if not db.get(Slide, slide_id):
+        raise HTTPException(404, "页面不存在")
+    if not db.get(Tag, tag_id):
+        raise HTTPException(404, "标签不存在")
+    existing = db.query(SlideTag).filter(SlideTag.slide_id == slide_id, SlideTag.tag_id == tag_id).first()
+    if not existing:
+        db.add(SlideTag(slide_id=slide_id, tag_id=tag_id, origin="manual", is_confirmed=True))
+        db.commit()
+    return {"detail": "已添加标签"}
+
+
 @router.delete("/slides/{slide_id}/tags/{tag_id}")
 def remove_slide_tag(slide_id: str, tag_id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)) -> dict:
     db.query(SlideTag).filter(SlideTag.slide_id == slide_id, SlideTag.tag_id == tag_id).delete()

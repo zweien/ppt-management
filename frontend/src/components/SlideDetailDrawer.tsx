@@ -22,6 +22,12 @@ interface SlideDetail {
   is_favorite?: boolean;
 }
 
+interface SlideTagRow {
+  id: string;
+  tag: { name: string; category: string | null };
+  origin: string;
+}
+
 export default function SlideDetailDrawer({
   slide,
   onClose,
@@ -34,8 +40,10 @@ export default function SlideDetailDrawer({
   onToggleFavorite?: (slideId: string, isFav: boolean) => void;
 }) {
   const [detail, setDetail] = useState<SlideDetail | null>(null);
-  const [aiTags, setAiTags] = useState<{ id: string; tag: { name: string; category: string | null }; origin: string }[]>([]);
-  const [showAi, setShowAi] = useState(false);
+  const [slideTags, setSlideTags] = useState<SlideTagRow[]>([]);
+  const [allTags, setAllTags] = useState<{ id: string; name: string; category: string | null }[]>([]);
+  const [addTagId, setAddTagId] = useState("");
+  const [tagBusy, setTagBusy] = useState(false);
   const [tab, setTab] = useState<"basic" | "text" | "mineru" | "tags" | "file">("basic");
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -49,7 +57,7 @@ export default function SlideDetailDrawer({
   useEffect(() => {
     if (!slide) {
       setDetail(null);
-      setAiTags([]);
+      setSlideTags([]);
       return;
     }
     let cancelled = false;
@@ -57,15 +65,16 @@ export default function SlideDetailDrawer({
     setTab("basic");
     (async () => {
       try {
-        const [d, tags] = await Promise.all([
+        const [d, tags, all] = await Promise.all([
           api.get<SlideDetail>(`/api/slides/${slide.id}`),
-          api.get<{ id: string; tag: { name: string; category: string | null }; origin: string }[]>(
-            `/api/slides/${slide.id}/tags`
-          ),
+          api.get<SlideTagRow[]>(`/api/slides/${slide.id}/tags`),
+          api.get<{ id: string; name: string; category: string | null }[]>(`/api/tags`),
         ]);
         if (!cancelled) {
           setDetail(d);
-          setAiTags(tags.filter((t) => t.origin === "ai"));
+          setSlideTags(tags);
+          setAllTags(all);
+          setAddTagId("");
           setNoteDraft(d.user_note || "");
           setNoteEditing(false);
           setFav(!!d.is_favorite);
@@ -161,6 +170,51 @@ export default function SlideDetailDrawer({
       onMsg?.(e instanceof ApiError ? e.message : "操作失败");
     } finally {
       setTogglingFav(false);
+    }
+  }
+
+  // 给当前页加标签(乐观更新,失败回滚)
+  async function addTag() {
+    if (!slide || !addTagId) return;
+    const tag = allTags.find((t) => t.id === addTagId);
+    if (!tag) return;
+    const tagId = addTagId;
+    // 已存在则不重复加
+    if (slideTags.some((st) => st.tag.name === tag.name)) {
+      setAddTagId("");
+      return;
+    }
+    const prev = slideTags;
+    const newRow: SlideTagRow = { id: `tmp-${tagId}`, tag: { name: tag.name, category: tag.category }, origin: "manual" };
+    setSlideTags((p) => [...p, newRow]);
+    setAddTagId("");
+    setTagBusy(true);
+    try {
+      await api.post(`/api/slides/${slide.id}/tags/${tagId}`);
+      // 重新拉取以拿到真实 id(origin 可能因幂等不变)
+      const fresh = await api.get<SlideTagRow[]>(`/api/slides/${slide.id}/tags`);
+      setSlideTags(fresh);
+    } catch (e) {
+      setSlideTags(prev); // 回滚
+      onMsg?.(e instanceof ApiError ? e.message : "添加标签失败");
+    } finally {
+      setTagBusy(false);
+    }
+  }
+
+  // 移除当前页的某标签(乐观更新,失败回滚)
+  async function removeTag(row: SlideTagRow) {
+    if (!slide) return;
+    const prev = slideTags;
+    setSlideTags((p) => p.filter((st) => st.id !== row.id));
+    try {
+      // 用真实 tag id(row.id 是 slide_tag 关联 id,需要 tag id)。从 allTags 反查
+      const tagId = allTags.find((t) => t.name === row.tag.name)?.id;
+      if (!tagId) throw new Error("标签不存在");
+      await api.delete(`/api/slides/${slide.id}/tags/${tagId}`);
+    } catch (e) {
+      setSlideTags(prev); // 回滚
+      onMsg?.(e instanceof ApiError ? e.message : "移除标签失败");
     }
   }
 
@@ -297,34 +351,81 @@ export default function SlideDetailDrawer({
                 </div>
               )}
               {tab === "tags" && (
-                <div className="text-sm space-y-3">
+                <div className="text-sm space-y-4">
                   <div>
-                    <div className="text-xs text-gray-400 mb-1">人工标签 / 已确认</div>
-                    <div className="flex flex-wrap gap-1.5">
-                      <span className="text-xs px-2 py-0.5 bg-gray-50 text-gray-400 border border-gray-200 rounded">
-                        暂无(可在标签管理添加)
-                      </span>
-                    </div>
-                  </div>
-                  <div>
-                    <button
-                      onClick={() => setShowAi((s) => !s)}
-                      className="text-xs text-brand-600 hover:underline mb-1"
-                    >
-                      {showAi ? "隐藏" : "显示"} AI 建议 {aiTags.length > 0 && `(${aiTags.length})`}
-                    </button>
-                    {showAi && (
+                    <div className="text-xs text-gray-400 mb-2">已打标签</div>
+                    {slideTags.length === 0 ? (
+                      <span className="text-xs text-gray-400">暂无标签,从下方添加</span>
+                    ) : (
                       <div className="flex flex-wrap gap-1.5">
-                        {aiTags.length === 0 ? (
-                          <span className="text-xs text-gray-400">(无 AI 标签)</span>
-                        ) : (
-                          aiTags.map((t) => (
-                            <span key={t.id} className="text-xs px-2 py-0.5 bg-purple-50 text-purple-600 border border-purple-200 rounded">
+                        {slideTags.map((t) => {
+                          const isAi = t.origin === "ai";
+                          return (
+                            <span
+                              key={t.id}
+                              className={`group inline-flex items-center gap-1 text-xs px-2 py-0.5 border rounded ${
+                                isAi
+                                  ? "bg-purple-50 text-purple-600 border-purple-200"
+                                  : "bg-brand-50 text-brand-600 border-brand-200"
+                              }`}
+                            >
                               {t.tag.name}
-                              {t.tag.category && <span className="text-purple-300 ml-1">{t.tag.category}</span>}
+                              {t.tag.category && (
+                                <span className={isAi ? "text-purple-300" : "text-brand-300"}>{t.tag.category}</span>
+                              )}
+                              {isAi && <span className="text-[10px] text-purple-300">AI</span>}
+                              <button
+                                type="button"
+                                onClick={() => removeTag(t)}
+                                className="text-gray-300 hover:text-red-500 leading-none"
+                                title="移除标签"
+                              >
+                                ✕
+                              </button>
                             </span>
-                          ))
-                        )}
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <div className="text-xs text-gray-400 mb-2">添加标签</div>
+                    {(() => {
+                      const usedNames = new Set(slideTags.map((t) => t.tag.name));
+                      const available = allTags.filter((t) => !usedNames.has(t.name));
+                      return (
+                        <div className="flex items-center gap-2">
+                          <select
+                            value={addTagId}
+                            onChange={(e) => setAddTagId(e.target.value)}
+                            disabled={available.length === 0 || tagBusy}
+                            className="border border-gray-300 rounded px-2 py-1 text-sm flex-1 disabled:bg-gray-50 disabled:text-gray-400"
+                          >
+                            <option value="">
+                              {available.length === 0 ? "所有标签已添加" : "选择标签…"}
+                            </option>
+                            {available.map((t) => (
+                              <option key={t.id} value={t.id}>
+                                {t.name}
+                                {t.category ? ` (${t.category})` : ""}
+                              </option>
+                            ))}
+                          </select>
+                          <button
+                            type="button"
+                            onClick={addTag}
+                            disabled={!addTagId || tagBusy}
+                            className="px-3 py-1 text-sm bg-brand-500 text-white rounded hover:bg-brand-600 disabled:opacity-50"
+                          >
+                            添加
+                          </button>
+                        </div>
+                      );
+                    })()}
+                    {allTags.length === 0 && (
+                      <div className="text-xs text-gray-400 mt-1">
+                        还没有任何标签,请先到「标签管理」创建。
                       </div>
                     )}
                   </div>
