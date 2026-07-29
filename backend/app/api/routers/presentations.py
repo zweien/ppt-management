@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_current_user
 from app.core.storage import get_storage
 from app.db.session import get_db
-from app.models import Presentation, PresentationVersion, Slide, User
+from app.models import Job, Presentation, PresentationVersion, Slide, User
 from app.schemas.presentation import (
     PresentationOut,
     SlideDetail,
@@ -21,8 +21,37 @@ from app.services.jobs import find_or_create_job
 
 router = APIRouter(prefix="/api", tags=["presentations"])
 
+# Statuses considered "in progress" — for these we surface the latest Job's
+# progress/stage so the file list can show a parse progress bar.
+PROCESSING_STATUSES = {
+    "UPLOADING", "VALIDATING", "PARSING", "RENDERING", "ENRICHING", "BASIC_READY",
+}
 
-def _presentation_to_out(db: Session, pres: Presentation) -> PresentationOut:
+
+def _latest_jobs_for_versions(db: Session, version_ids: list[str]) -> dict[str, Job]:
+    """Batch-fetch the most recent Job per version id (target_id == version_id).
+    Returns a dict {version_id: Job}. One query, N+1-safe."""
+    if not version_ids:
+        return {}
+    rows = (
+        db.query(Job)
+        .filter(Job.target_id.in_(version_ids))
+        .order_by(Job.target_id, Job.created_at.desc())
+        .all()
+    )
+    latest: dict[str, Job] = {}
+    for r in rows:
+        # rows are ordered so the first seen per target_id is the newest
+        if r.target_id not in latest:
+            latest[r.target_id] = r
+    return latest
+
+
+def _presentation_to_out(
+    db: Session,
+    pres: Presentation,
+    progress_map: dict[str, Job] | None = None,
+) -> PresentationOut:
     versions = (
         db.query(PresentationVersion)
         .filter(PresentationVersion.presentation_id == pres.id)
@@ -34,6 +63,14 @@ def _presentation_to_out(db: Session, pres: Presentation) -> PresentationOut:
         cv = db.get(PresentationVersion, pres.current_version_id)
         if cv:
             cur_status = cv.status
+    # Resolve parse progress for in-progress files.
+    parse_progress: int | None = None
+    parse_stage: str | None = None
+    if pres.current_version_id and cur_status in PROCESSING_STATUSES and progress_map is not None:
+        job = progress_map.get(pres.current_version_id)
+        if job is not None:
+            parse_progress = job.progress
+            parse_stage = job.stage
     return PresentationOut(
         id=pres.id,
         title=pres.title,
@@ -47,6 +84,8 @@ def _presentation_to_out(db: Session, pres: Presentation) -> PresentationOut:
             file_size=v.file_size, original_filename=v.original_filename, created_at=v.created_at,
         ) for v in versions],
         current_status=cur_status,
+        parse_progress=parse_progress,
+        parse_stage=parse_stage,
     )
 
 
@@ -60,7 +99,22 @@ def list_presentations(
     if not include_deleted:
         q = q.filter(Presentation.deleted_at.is_(None))
     items = q.order_by(Presentation.created_at.desc()).all()
-    return [_presentation_to_out(db, p) for p in items]
+    # Batch-fetch current-version statuses to decide which need progress.
+    cv_ids = [p.current_version_id for p in items if p.current_version_id]
+    cv_status: dict[str, str] = {}
+    if cv_ids:
+        for v in db.query(PresentationVersion).filter(PresentationVersion.id.in_(cv_ids)).all():
+            cv_status[v.id] = v.status
+    in_progress_cvs = [vid for vid in cv_ids if cv_status.get(vid) in PROCESSING_STATUSES]
+    progress_map = _latest_jobs_for_versions(db, in_progress_cvs)
+    return [_presentation_to_out(db, p, progress_map) for p in items]
+
+
+def _current_status_of(db: Session, pres: Presentation) -> str | None:
+    if not pres.current_version_id:
+        return None
+    cv = db.get(PresentationVersion, pres.current_version_id)
+    return cv.status if cv else None
 
 
 @router.get("/presentations/{pres_id}", response_model=PresentationOut)
@@ -69,7 +123,12 @@ def get_presentation(pres_id: str, db: Session = Depends(get_db),
     pres = db.get(Presentation, pres_id)
     if not pres or (pres.deleted_at is not None):
         raise HTTPException(status_code=404, detail="文件不存在")
-    return _presentation_to_out(db, pres)
+    progress_map: dict[str, Job] = {}
+    if pres.current_version_id:
+        cur = _current_status_of(db, pres)
+        if cur in PROCESSING_STATUSES:
+            progress_map = _latest_jobs_for_versions(db, [pres.current_version_id])
+    return _presentation_to_out(db, pres, progress_map)
 
 
 @router.delete("/presentations/{pres_id}")

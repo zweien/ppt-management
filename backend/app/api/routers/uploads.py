@@ -1,5 +1,6 @@
 """上传路由(UP-01~05 + 版本管理 §10.1)。"""
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
@@ -60,15 +61,46 @@ async def upload_pptx(
     )
 
 
+class UploadCheckRequest(BaseModel):
+    sha256: str
+    size: int | None = None
+
+
+@router.post("/check")
+def check_duplicate(
+    body: UploadCheckRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> dict:
+    """轻量预检:用客户端算好的 SHA-256 查是否已存在(精确查重),避免重复传输。
+    返回 {exists, presentation:{id,title}|null}。仅查未删除 presentation 的版本。
+    """
+    row = (
+        db.query(PresentationVersion)
+        .join(Presentation, Presentation.id == PresentationVersion.presentation_id)
+        .filter(
+            PresentationVersion.sha256 == body.sha256,
+            Presentation.deleted_at.is_(None),
+        )
+        .first()
+    )
+    if row is None:
+        return {"exists": False, "presentation": None}
+    pres = db.get(Presentation, row.presentation_id)
+    return {"exists": True, "presentation": {"id": pres.id, "title": pres.title}}
+
+
 @router.post("/suggest-version")
 async def suggest_version(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> dict:
-    """上传前预解析,返回可能的版本候选(指纹 Jaccard,ADR-0008 §1)。
+    """[已弃用] 上传前预解析,返回可能的版本候选(指纹 Jaccard,ADR-0008 §1)。
 
     供前端在上传时给用户"作为新版本"的选项。
+    已弃用:该接口需要上传整个文件做相似度计算,与"文件只传一次"冲突。
+    前端改用 POST /api/uploads/check(SHA-256 精确查重,轻量)。保留接口向后兼容。
     """
     content = await file.read()
     filename = file.filename or "untitled.pptx"

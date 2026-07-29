@@ -7,8 +7,51 @@ export const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:800
 
 const VERSION_CACHE_KEY = "app_version";
 const VERSION_CACHE_TS_KEY = "app_version_ts";
+const ROOT_CACHE_KEY = "app_root_payload";
 // 缓存有效期:1 小时(版本不常变,避免频繁请求)
 const CACHE_TTL_MS = 60 * 60 * 1000;
+
+export interface UploadLimits {
+  max_size_mb: number;
+  allowed_extensions: string[];
+}
+
+interface RootPayload {
+  version: string;
+  upload_limits?: UploadLimits;
+}
+
+async function fetchRoot(): Promise<RootPayload | null> {
+  const cachedTs = typeof window !== "undefined" ? localStorage.getItem(VERSION_CACHE_TS_KEY) : null;
+  const fresh = cachedTs && Date.now() - Number(cachedTs) < CACHE_TTL_MS;
+  if (fresh) {
+    const raw = typeof window !== "undefined" ? localStorage.getItem(ROOT_CACHE_KEY) : null;
+    if (raw) {
+      try {
+        return JSON.parse(raw) as RootPayload;
+      } catch {
+        /* fall through to fetch */
+      }
+    }
+  }
+  try {
+    const res = await fetch(`${API_BASE}/`, { cache: "no-store" });
+    if (res.ok) {
+      const data = (await res.json()) as RootPayload;
+      if (typeof window !== "undefined") {
+        localStorage.setItem(VERSION_CACHE_KEY, data.version);
+        localStorage.setItem(VERSION_CACHE_TS_KEY, String(Date.now()));
+        localStorage.setItem(ROOT_CACHE_KEY, JSON.stringify(data));
+      }
+      return data;
+    }
+  } catch {
+    /* 离线/后端未启动 */
+  }
+  // fall back to whatever is cached
+  const raw = typeof window !== "undefined" ? localStorage.getItem(ROOT_CACHE_KEY) : null;
+  return raw ? (JSON.parse(raw) as RootPayload) : null;
+}
 
 /**
  * 获取当前版本号。优先用 localStorage 缓存(1h TTL),过期或无缓存时 fetch GET /。
@@ -16,31 +59,22 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
  */
 export async function fetchVersion(fallback = ""): Promise<string> {
   const cached = typeof window !== "undefined" ? localStorage.getItem(VERSION_CACHE_KEY) : null;
-  const cachedTs = typeof window !== "undefined" ? localStorage.getItem(VERSION_CACHE_TS_KEY) : null;
-  const fresh = cachedTs && Date.now() - Number(cachedTs) < CACHE_TTL_MS;
-  if (cached && fresh) return cached;
-
-  try {
-    const res = await fetch(`${API_BASE}/`, { cache: "no-store" });
-    if (res.ok) {
-      const data = await res.json();
-      const v = data.version as string;
-      if (v && typeof window !== "undefined") {
-        localStorage.setItem(VERSION_CACHE_KEY, v);
-        localStorage.setItem(VERSION_CACHE_TS_KEY, String(Date.now()));
-      }
-      return v || cached || fallback;
-    }
-  } catch {
-    /* 离线/后端未启动,用缓存或 fallback */
-  }
-  return cached || fallback;
+  const payload = await fetchRoot();
+  return payload?.version || cached || fallback;
 }
 
 /** 同步读取缓存的版本号(用于 SSR / 首屏,不触发网络请求)。 */
 export function getCachedVersion(fallback = ""): string {
   if (typeof window === "undefined") return fallback;
   return localStorage.getItem(VERSION_CACHE_KEY) || fallback;
+}
+
+/** 获取上传限制(max_size_mb / allowed_extensions),复用 GET / 缓存。 */
+export async function fetchUploadLimits(
+  fallback: UploadLimits = { max_size_mb: 200, allowed_extensions: [".pptx"] },
+): Promise<UploadLimits> {
+  const payload = await fetchRoot();
+  return payload?.upload_limits || fallback;
 }
 
 // --- CHANGELOG 结构化数据 ---

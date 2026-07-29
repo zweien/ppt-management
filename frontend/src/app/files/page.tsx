@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { UploadCloud, FileText, RefreshCw, Trash2, Eye } from "lucide-react";
 import AppShell from "@/components/AppShell";
-import { api, ApiError, API_BASE } from "@/lib/api";
+import UploadQueue from "@/components/UploadQueue";
+import { api, ApiError } from "@/lib/api";
 import { presStatus } from "@/lib/status";
 import { cn } from "@/lib/cn";
 import Button from "@/components/ui/Button";
@@ -33,23 +34,21 @@ interface Presentation {
   created_at: string;
   versions: Version[];
   deleted_at: string | null;
+  parse_progress?: number | null;
+  parse_stage?: string | null;
 }
 
 export default function FilesPage() {
   const toast = useToast();
   const [items, setItems] = useState<Presentation[]>([]);
   const [loading, setLoading] = useState(true);
-  const [uploading, setUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
-  const [uploadFileName, setUploadFileName] = useState("");
   const [dragOver, setDragOver] = useState(false);
   const [includeDeleted, setIncludeDeleted] = useState(false);
   const [reparsingId, setReparsingId] = useState<string | null>(null);
-  // Delete confirmation modal state.
   const [deleteTarget, setDeleteTarget] = useState<Presentation | null>(null);
   const [deleting, setDeleting] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
-  const xhrRef = useRef<XMLHttpRequest | null>(null);
+  const enqueueRef = useRef<((files: FileList | File[]) => void) | null>(null);
 
   async function load() {
     setLoading(true);
@@ -62,109 +61,25 @@ export default function FilesPage() {
     }
   }
 
+  const hasProcessing = items.some(
+    (p) => p.parse_progress != null || ["PARSING", "RENDERING", "ENRICHING", "UPLOADING", "VALIDATING"].includes(p.current_status || ""),
+  );
+
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [includeDeleted]);
 
-  function cancelUpload() {
-    if (xhrRef.current) {
-      xhrRef.current.abort();
-      xhrRef.current = null;
-    }
-    setUploading(false);
-    setUploadProgress(0);
-    setUploadFileName("");
-    toast.info("已取消上传");
-    if (fileRef.current) fileRef.current.value = "";
-  }
+  // Poll faster (2s) while any file is still processing.
+  useEffect(() => {
+    if (!hasProcessing) return;
+    const t = setInterval(load, 2000);
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasProcessing]);
 
-  async function handleUpload(file: File) {
-    setUploading(true);
-    setUploadProgress(0);
-    setUploadFileName(file.name);
-    try {
-      // Version-candidate suggestion (ADR-0008).
-      let parentId: string | undefined;
-      try {
-        const sForm = new FormData();
-        sForm.append("file", file);
-        const sug = await api.postForm<{
-          page_count: number;
-          candidates: { presentation_id: string; title: string; similarity: number }[];
-        }>("/api/uploads/suggest-version", sForm);
-        if (sug.candidates.length > 0) {
-          const top = sug.candidates[0];
-          const ok = await confirmDialog(top);
-          if (ok) parentId = top.presentation_id;
-        }
-      } catch {
-        /* suggestion failure is non-blocking */
-      }
-
-      const form = new FormData();
-      form.append("file", file);
-      if (parentId) form.append("parent_presentation_id", parentId);
-
-      await new Promise<void>((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        xhrRef.current = xhr;
-        xhr.upload.onprogress = (e) => {
-          if (e.lengthComputable) setUploadProgress(Math.round((e.loaded / e.total) * 100));
-        };
-        xhr.onload = () => {
-          xhrRef.current = null;
-          if (xhr.status >= 200 && xhr.status < 300) {
-            try {
-              const res = JSON.parse(xhr.responseText);
-              toast.success(res.message + (parentId ? "(已关联为新版本)" : ""));
-            } catch {
-              toast.success("上传成功");
-            }
-            resolve();
-          } else {
-            let detail = `HTTP ${xhr.status}`;
-            try {
-              detail = JSON.parse(xhr.responseText).detail || detail;
-            } catch {
-              /* */
-            }
-            reject(new Error(detail));
-          }
-        };
-        xhr.onerror = () => {
-          xhrRef.current = null;
-          reject(new Error("网络错误"));
-        };
-        xhr.onabort = () => {
-          xhrRef.current = null;
-          reject(new Error("aborted"));
-        };
-        const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
-        xhr.open("POST", `${API_BASE}/api/uploads`);
-        if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
-        xhr.send(form);
-      });
-      await load();
-    } catch (e) {
-      const m = e instanceof Error ? e.message : "上传失败";
-      if (m !== "aborted") toast.error(m);
-    } finally {
-      setUploading(false);
-      setUploadProgress(0);
-      setUploadFileName("");
-      if (fileRef.current) fileRef.current.value = "";
-    }
-  }
-
-  // Inline confirm for version-candidate suggestion (kept simple via Modal).
-  const [versionSuggest, setVersionSuggest] = useState<{ title: string; similarity: number } | null>(null);
-  const versionResolve = useRef<((v: boolean) => void) | null>(null);
-  function confirmDialog(top: { title: string; similarity: number }): Promise<boolean> {
-    setVersionSuggest(top);
-    return new Promise((resolve) => {
-      versionResolve.current = resolve;
-    });
+  function handleFiles(files: FileList | File[]) {
+    enqueueRef.current?.(files);
   }
 
   async function handleDelete() {
@@ -197,6 +112,7 @@ export default function FilesPage() {
     try {
       const r = await api.post<{ detail: string }>(`/api/presentations/${id}/reparse`);
       toast.success(`${r.detail}(可在任务中心查看进度)`);
+      await load();
     } catch (e) {
       toast.error(e instanceof ApiError ? e.message : "重新解析失败");
     } finally {
@@ -222,44 +138,25 @@ export default function FilesPage() {
             onDrop={(e) => {
               e.preventDefault();
               setDragOver(false);
-              const f = e.dataTransfer.files?.[0];
-              if (f && !uploading) handleUpload(f);
+              if (e.dataTransfer.files?.length) handleFiles(e.dataTransfer.files);
             }}
           >
             <UploadCloud className="w-8 h-8 mx-auto mb-2 text-mute" />
-            <div className="text-sm text-body mb-3">
-              {uploading ? `上传中:${uploadFileName} (${uploadProgress}%)` : "拖拽 PPTX 到此处,或点击选择文件"}
-            </div>
-            {!uploading && (
-              <label className="inline-block">
-                <Button variant="primary" size="md" onClick={() => fileRef.current?.click()}>
-                  选择文件上传
-                </Button>
-                <input
-                  ref={fileRef}
-                  type="file"
-                  accept=".pptx"
-                  className="hidden"
-                  onChange={(e) => {
-                    const f = e.target.files?.[0];
-                    if (f) handleUpload(f);
-                  }}
-                />
-              </label>
-            )}
-            {uploading && (
-              <div className="max-w-md mx-auto">
-                <div className="w-full bg-canvas-soft-2 rounded-pill h-2 overflow-hidden">
-                  <div
-                    className="bg-primary h-full transition-all duration-200"
-                    style={{ width: `${uploadProgress}%` }}
-                  />
-                </div>
-                <button onClick={cancelUpload} className="mt-3 text-xs text-error hover:underline">
-                  取消上传
-                </button>
-              </div>
-            )}
+            <div className="text-sm text-body mb-3">拖拽 PPTX 到此处,或点击选择文件(支持多选)</div>
+            <Button variant="primary" size="md" onClick={() => fileRef.current?.click()}>
+              选择文件上传
+            </Button>
+            <input
+              ref={fileRef}
+              type="file"
+              accept=".pptx"
+              multiple
+              className="hidden"
+              onChange={(e) => {
+                if (e.target.files?.length) handleFiles(e.target.files);
+                if (fileRef.current) fileRef.current.value = "";
+              }}
+            />
           </div>
           <p className="text-xs text-mute mt-3">仅支持 .pptx(不支持 .ppt / 加密文件)。完全相同文件将提示重复。</p>
         </div>
@@ -297,6 +194,7 @@ export default function FilesPage() {
             <TBody>
               {items.map((p) => {
                 const st = presStatus(p.current_status || "");
+                const processing = p.parse_progress != null;
                 return (
                   <TR key={p.id}>
                     <TD>
@@ -310,9 +208,19 @@ export default function FilesPage() {
                     </TD>
                     <TD>{p.page_count}</TD>
                     <TD>
-                      <Badge tone={st.tone} dot>
-                        {st.label}
-                      </Badge>
+                      <div className="flex flex-col gap-1.5 min-w-[120px]">
+                        <Badge tone={st.tone} dot>
+                          {st.label}
+                        </Badge>
+                        {processing && (
+                          <div className="w-full h-1 bg-canvas-soft-2 rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-primary transition-all duration-500"
+                              style={{ width: `${Math.max(p.parse_progress || 0, 3)}%` }}
+                            />
+                          </div>
+                        )}
+                      </div>
                     </TD>
                     <TD className="text-mute">
                       {p.versions[0] ? `${(p.versions[0].file_size / 1024).toFixed(0)} KB` : "-"}
@@ -359,6 +267,14 @@ export default function FilesPage() {
         )}
       </div>
 
+      {/* Upload queue (floating) */}
+      <UploadQueue
+        registerEnqueue={(fn) => {
+          enqueueRef.current = fn;
+        }}
+        onAnyDone={load}
+      />
+
       {/* Delete confirm */}
       <Modal
         open={!!deleteTarget}
@@ -376,46 +292,6 @@ export default function FilesPage() {
           />
         }
       />
-
-      {/* Version-candidate suggestion */}
-      <Modal
-        open={!!versionSuggest}
-        onClose={() => {
-          setVersionSuggest(null);
-          versionResolve.current?.(false);
-        }}
-        title="检测到相似文件"
-        description={
-          versionSuggest
-            ? `《${versionSuggest.title}》(相似度 ${(versionSuggest.similarity * 100).toFixed(0)}%)`
-            : ""
-        }
-        size="sm"
-        footer={
-          <>
-            <Button
-              variant="secondary"
-              onClick={() => {
-                setVersionSuggest(null);
-                versionResolve.current?.(false);
-              }}
-            >
-              作为全新文件
-            </Button>
-            <Button
-              variant="primary"
-              onClick={() => {
-                setVersionSuggest(null);
-                versionResolve.current?.(true);
-              }}
-            >
-              作为新版本
-            </Button>
-          </>
-        }
-      >
-        <p className="text-sm text-body">作为新版本会关联到该文件,保留版本链;全新文件则独立建立。</p>
-      </Modal>
     </AppShell>
   );
 }

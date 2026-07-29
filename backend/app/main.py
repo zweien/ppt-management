@@ -50,7 +50,15 @@ def create_app() -> FastAPI:
 
     @app.get("/")
     def root() -> dict:
-        return {"app": settings.APP_NAME, "version": settings.APP_VERSION, "status": "running"}
+        return {
+            "app": settings.APP_NAME,
+            "version": settings.APP_VERSION,
+            "status": "running",
+            "upload_limits": {
+                "max_size_mb": settings.UPLOAD_MAX_SIZE_MB,
+                "allowed_extensions": settings.UPLOAD_ALLOWED_EXTENSIONS,
+            },
+        }
 
     return app
 

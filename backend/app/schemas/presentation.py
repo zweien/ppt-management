@@ -26,6 +26,9 @@ class PresentationOut(BaseModel):
     created_at: datetime
     versions: list[VersionOut] = []
     current_status: Optional[str] = None
+    # 解析进度(仅处理中的文件有值,来自当前版本最新的 Job)
+    parse_progress: Optional[int] = None
+    parse_stage: Optional[str] = None
 
 
 class SlideOut(BaseModel):
