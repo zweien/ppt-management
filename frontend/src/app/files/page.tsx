@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import AppShell from "@/components/AppShell";
-import { api, ApiError } from "@/lib/api";
+import { api, ApiError, API_BASE } from "@/lib/api";
 
 interface Version {
   id: string; version_no: number; status: string; page_count: number;
@@ -32,9 +32,13 @@ export default function FilesPage() {
   const [items, setItems] = useState<Presentation[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0); // 0-100
+  const [uploadFileName, setUploadFileName] = useState("");
+  const [dragOver, setDragOver] = useState(false);
   const [msg, setMsg] = useState("");
   const [includeDeleted, setIncludeDeleted] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const xhrRef = useRef<XMLHttpRequest | null>(null);
 
   async function load() {
     setLoading(true);
@@ -50,8 +54,20 @@ export default function FilesPage() {
 
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [includeDeleted]);
 
+  function cancelUpload() {
+    if (xhrRef.current) {
+      xhrRef.current.abort();
+      xhrRef.current = null;
+    }
+    setUploading(false);
+    setUploadProgress(0);
+    setUploadFileName("");
+    setMsg("已取消上传");
+    if (fileRef.current) fileRef.current.value = "";
+  }
+
   async function handleUpload(file: File) {
-    setUploading(true); setMsg("");
+    setUploading(true); setMsg(""); setUploadProgress(0); setUploadFileName(file.name);
     try {
       // 先做版本候选建议(ADR-0008):若与已有文件相似,问用户是否作为新版本
       let parentId: string | undefined = undefined;
@@ -75,13 +91,45 @@ export default function FilesPage() {
       const form = new FormData();
       form.append("file", file);
       if (parentId) form.append("parent_presentation_id", parentId);
-      const res = await api.postForm<{ message: string; is_duplicate: boolean }>("/api/uploads", form);
-      setMsg(res.message + (parentId ? `(已关联为新版本)` : ""));
+
+      // 用 XHR 获取上传进度 + 支持取消(UP-02)
+      await new Promise<void>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhrRef.current = xhr;
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) setUploadProgress(Math.round((e.loaded / e.total) * 100));
+        };
+        xhr.onload = () => {
+          xhrRef.current = null;
+          if (xhr.status >= 200 && xhr.status < 300) {
+            try {
+              const res = JSON.parse(xhr.responseText);
+              setMsg(res.message + (parentId ? "(已关联为新版本)" : ""));
+            } catch {
+              setMsg("上传成功");
+            }
+            resolve();
+          } else {
+            let detail = `HTTP ${xhr.status}`;
+            try { detail = JSON.parse(xhr.responseText).detail || detail; } catch { /* */ }
+            reject(new Error(detail));
+          }
+        };
+        xhr.onerror = () => { xhrRef.current = null; reject(new Error("网络错误")); };
+        xhr.onabort = () => { xhrRef.current = null; reject(new Error("aborted")); };
+        const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+        xhr.open("POST", `${API_BASE}/api/uploads`);
+        if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+        xhr.send(form);
+      });
       await load();
     } catch (e) {
-      setMsg(e instanceof ApiError ? e.message : "上传失败");
+      const m = e instanceof Error ? e.message : "上传失败";
+      if (m !== "aborted") setMsg(m);
     } finally {
       setUploading(false);
+      setUploadProgress(0);
+      setUploadFileName("");
       if (fileRef.current) fileRef.current.value = "";
     }
   }
@@ -123,24 +171,58 @@ export default function FilesPage() {
     <AppShell title="文件管理">
       <div className="space-y-6">
         <div className="bg-white rounded-xl border border-gray-200 p-5">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="font-medium text-gray-700">上传 PPTX</h2>
-            <label className="px-4 py-2 bg-brand-500 text-white rounded-lg hover:bg-brand-600 cursor-pointer text-sm font-medium">
-              {uploading ? "上传中..." : "选择文件上传"}
-              <input
-                ref={fileRef}
-                type="file"
-                accept=".pptx"
-                className="hidden"
-                disabled={uploading}
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (f) handleUpload(f);
-                }}
-              />
-            </label>
+          <div
+            className={`border-2 border-dashed rounded-xl p-6 text-center transition ${
+              dragOver ? "border-brand-400 bg-brand-50" : "border-gray-300"
+            }`}
+            onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={(e) => {
+              e.preventDefault();
+              setDragOver(false);
+              const f = e.dataTransfer.files?.[0];
+              if (f && !uploading) handleUpload(f);
+            }}
+          >
+            <div className="text-3xl mb-2">📤</div>
+            <div className="text-sm text-gray-600 mb-3">
+              {uploading
+                ? `上传中:${uploadFileName} (${uploadProgress}%)`
+                : "拖拽 PPTX 到此处,或点击选择文件"}
+            </div>
+            {!uploading && (
+              <label className="px-4 py-2 bg-brand-500 text-white rounded-lg hover:bg-brand-600 cursor-pointer text-sm font-medium inline-block">
+                选择文件上传
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept=".pptx"
+                  className="hidden"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) handleUpload(f);
+                  }}
+                />
+              </label>
+            )}
+            {uploading && (
+              <div className="max-w-md mx-auto">
+                <div className="w-full bg-gray-200 rounded-full h-2.5 overflow-hidden">
+                  <div
+                    className="bg-brand-500 h-full transition-all duration-200"
+                    style={{ width: `${uploadProgress}%` }}
+                  />
+                </div>
+                <button
+                  onClick={cancelUpload}
+                  className="mt-3 text-xs text-red-500 hover:underline"
+                >
+                  取消上传
+                </button>
+              </div>
+            )}
           </div>
-          <p className="text-xs text-gray-400">仅支持 .pptx(不支持 .ppt / 加密文件)。完全相同文件将提示重复。</p>
+          <p className="text-xs text-gray-400 mt-3">仅支持 .pptx(不支持 .ppt / 加密文件)。完全相同文件将提示重复。</p>
           {msg && <div className="mt-2 text-sm text-brand-600">{msg}</div>}
         </div>
 

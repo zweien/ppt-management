@@ -18,6 +18,7 @@ interface SlideDetail {
   presentation_title: string | null;
   content_json: any;
   mineru_markdown?: string | null;
+  user_note?: string | null;
 }
 
 export default function SlideDetailDrawer({
@@ -36,6 +37,9 @@ export default function SlideDetailDrawer({
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [exportMsg, setExportMsg] = useState("");
+  const [noteDraft, setNoteDraft] = useState("");
+  const [savingNote, setSavingNote] = useState(false);
+  const [noteEditing, setNoteEditing] = useState(false);
 
   useEffect(() => {
     if (!slide) {
@@ -57,6 +61,8 @@ export default function SlideDetailDrawer({
         if (!cancelled) {
           setDetail(d);
           setAiTags(tags.filter((t) => t.origin === "ai"));
+          setNoteDraft(d.user_note || "");
+          setNoteEditing(false);
         }
       } catch (e) {
         if (!cancelled) onMsg?.(e instanceof ApiError ? e.message : "加载详情失败");
@@ -112,6 +118,21 @@ export default function SlideDetailDrawer({
       setExportMsg(e instanceof ApiError ? e.message : "导出失败");
     } finally {
       setExporting(false);
+    }
+  }
+
+  async function saveNote() {
+    if (!slide) return;
+    setSavingNote(true);
+    try {
+      await api.patch(`/api/slides/${slide.id}`, { user_note: noteDraft });
+      setDetail((d) => (d ? { ...d, user_note: noteDraft } : d));
+      setNoteEditing(false);
+      onMsg?.("备注已保存");
+    } catch (e) {
+      onMsg?.(e instanceof ApiError ? e.message : "保存失败");
+    } finally {
+      setSavingNote(false);
     }
   }
 
@@ -190,7 +211,33 @@ export default function SlideDetailDrawer({
                       <span className="text-gray-300">(未生成)</span>
                     )}
                   </div>
-                  <div><span className="text-gray-400">备注:</span> {detail?.notes_text || "-"}</div>
+                  <div>
+                    <span className="text-gray-400">备注:</span>{" "}
+                    {noteEditing ? (
+                      <span className="inline-block">
+                        <input
+                          value={noteDraft}
+                          onChange={(e) => setNoteDraft(e.target.value)}
+                          className="border border-gray-300 rounded px-2 py-0.5 text-sm w-48"
+                          placeholder="添加你的备注"
+                        />
+                        <button onClick={saveNote} disabled={savingNote} className="ml-2 text-xs text-brand-600 hover:underline">
+                          {savingNote ? "保存中" : "保存"}
+                        </button>
+                        <button onClick={() => { setNoteEditing(false); setNoteDraft(detail?.user_note || ""); }} className="ml-2 text-xs text-gray-400 hover:underline">
+                          取消
+                        </button>
+                      </span>
+                    ) : (
+                      <span>
+                        {detail?.user_note || "(无)"}{" "}
+                        <button onClick={() => setNoteEditing(true)} className="text-xs text-brand-600 hover:underline ml-1">
+                          编辑
+                        </button>
+                      </span>
+                    )}
+                  </div>
+                  <div><span className="text-gray-400">演讲备注:</span> {detail?.notes_text || "-"}</div>
                   <div>
                     <span className="text-gray-400">指纹:</span>{" "}
                     <code className="text-xs">{detail?.fingerprint?.slice(0, 16) || "-"}...</code>

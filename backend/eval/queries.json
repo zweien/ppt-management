@@ -1,0 +1,12 @@
+[
+  {"id": 1, "query": "无人系统总体架构", "relevant_titles": ["无人系统总体架构"], "type": "keyword"},
+  {"id": 2, "query": "智能体协同", "relevant_titles": ["能力现状与目标"], "type": "keyword"},
+  {"id": 3, "query": "项目研究目标", "relevant_titles": ["项目研究目标"], "type": "keyword"},
+  {"id": 4, "query": "CMG 多尺度健康监测", "relevant_titles": [], "type": "keyword"},
+  {"id": 5, "query": "飞行器概念设计", "relevant_titles": ["一句话，设计一架飞机"], "type": "semantic"},
+  {"id": 6, "query": "紫色科技风总体架构页", "relevant_titles": ["无人系统总体架构"], "type": "semantic"},
+  {"id": 7, "query": "数据可视化方案", "relevant_titles": ["数据可视化方案"], "type": "keyword"},
+  {"id": 8, "query": "年度总结报告", "relevant_titles": ["年度总结报告"], "type": "keyword"},
+  {"id": 9, "query": "机器学习建模小样本", "relevant_titles": ["机器学习建模"], "type": "keyword"},
+  {"id": 10, "query": "如何设计一架小型无人机", "relevant_titles": ["一句话，设计一架飞机"], "type": "semantic"}
+]

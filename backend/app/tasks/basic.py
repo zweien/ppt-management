@@ -73,6 +73,10 @@ def parse_openxml_task(self, version_id: str) -> dict:  # noqa: ANN001
         parsed = parse_pptx(content)
         page_count = len(parsed.slides)
 
+        # 取所属 presentation 标题(用于全文索引含文件名,SE-01)
+        presentation = db.get(Presentation, version.presentation_id)
+        pres_title = presentation.title if presentation else None
+
         # Idempotent: delete any pre-existing slides for this version (re-parse case)
         db.query(Slide).filter(Slide.version_id == version_id).delete()
         db.commit()
@@ -92,8 +96,8 @@ def parse_openxml_task(self, version_id: str) -> dict:  # noqa: ANN001
             )
             db.add(slide)
             db.flush()
-            # Build full-text index (app-layer jieba)
-            index_slide(db, slide)
+            # Build full-text index (app-layer jieba;含标题/正文/备注/表格/文件名 SE-01)
+            index_slide(db, slide, pres_title)
 
         version.page_count = page_count
         # Move to BASIC_READY if render also done, else stay RENDERING-ish; set conservatively
