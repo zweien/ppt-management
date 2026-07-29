@@ -14,6 +14,9 @@ PPT素材库_extracted/
 # --- Playwright-cli session artifacts ---
 .playwright-cli/
 
+# --- Local run artifacts (start.sh: PID files + logs) ---
+.run/
+
 # --- Node / Next.js ---
 node_modules/
 .next/

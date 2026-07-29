@@ -60,6 +60,25 @@ BAAI/bge-m3,多语言 dense embedding,1024 维,~2.3GB。中英 RAG 事实标准,
   - 自建服务无内置多副本/负载均衡,单进程;内网单管理员规模够用,高并发场景需另行扩展。
 - **运维**:`embedding.service` 需作为宿主机常驻服务管理(systemd),不在 compose 内,与 MinerU 同。
 
+### 5. 统一启动脚本(本项目两类服务的管理入口)
+
+本项目有两类服务:**宿主机常驻服务**(MinerU API + Embedding,不进 compose)+ **compose 栈**。统一由 `infra/start.sh` 管理(PID 文件控制宿主机服务,`docker compose` 管理容器栈):
+
+```
+infra/start.sh start    # 启动全部(MinerU + Embedding + compose)
+infra/start.sh stop     # 停止全部
+infra/start.sh restart  # 重启全部
+infra/start.sh status   # 各服务状态(区分"本脚本启动" / "非本脚本启动" / "未运行")
+infra/start.sh logs host-embedding   # 跟踪日志(host-mineru / host-embedding / compose 服务名)
+```
+
+设计要点:
+- 宿主机服务用 PID 文件(`.run/*.pid`)管理,不依赖 systemd/sudo;`start.sh stop` 只停脚本自己启动的进程,**不会误杀**其他方式启动(手拉/systemd)的同名服务。
+- `start` 时若端口已被占用(服务由别的方式在跑),跳过并提示,不重复启动。
+- 各服务路径/端口集中配置在脚本头部,可被环境变量覆盖(`MINERU_VENV` / `EMBEDDING_DIR` / `EMBEDDING_PORT` 等)。
+- `.run/`(PID + 日志)已加入 `.gitignore`。
+- 生产环境若装了 systemd unit(`infra/systemd/embedding.service`),优先用 `systemctl` 管理更稳(开机自启 + 崩溃重启);`start.sh` 是开发环境兜底。
+
 ## 关联
 
 - 上游:ADR-0001(OpenAI 兼容 API)、ADR-0006(embedding 配置驱动 / 换模型工作流)、ADR-0007 §6(宿主机常驻 HTTP 服务模式)。
