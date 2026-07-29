@@ -1,0 +1,112 @@
+"""basic 队列任务:Open XML 解析、索引构建(PRD §15.1)。
+
+parse_openxml_task:解析源 PPTX → 建 slides → 建全文索引 → 推进状态到 BASIC_READY(文本部分)。
+build_search_index:为单 slide 建索引(供查询时按需)。
+
+幂等:用 idempotency_key 防重复创建 slides(§15.3)。
+"""
+import logging
+from datetime import datetime, timezone
+
+from sqlalchemy.orm import Session
+
+from app.db.session import SessionLocal
+from app.models import Job, Presentation, PresentationVersion, Slide
+from app.services.jobs import find_or_create_job, mark_failed, mark_running, mark_success
+from app.services.openxml import normalize_text_for_fingerprint, parse_pptx
+from app.services.search import index_slide
+from app.services.tokenizer import text_fingerprint_hash
+
+from app.tasks.celery_app import celery_app
+
+logger = logging.getLogger(__name__)
+
+
+def _fingerprint(native_text: str) -> str:
+    norm = normalize_text_for_fingerprint(native_text)
+    return text_fingerprint_hash(norm)
+
+
+@celery_app.task(name="app.tasks.basic.parse_openxml", bind=True, max_retries=2)
+def parse_openxml_task(self, version_id: str) -> dict:  # noqa: ANN001
+    """Parse a version's source PPTX and create slides."""
+    db: Session = SessionLocal()
+    try:
+        version = db.get(PresentationVersion, version_id)
+        if not version:
+            return {"error": "version not found"}
+
+        job = find_or_create_job(db, "parse_openxml", "version", version_id,
+                                 stage="PARSING", input_data=version.sha256)
+        if job.status == "success":
+            return {"skipped": "already parsed"}
+        mark_running(db, job)
+
+        # Update version status
+        version.status = "PARSING"
+        db.commit()
+
+        # Fetch source from storage
+        from app.core.storage import get_storage
+        storage = get_storage()
+        content = storage.get_object(version.source_object_key)
+
+        parsed = parse_pptx(content)
+        page_count = len(parsed.slides)
+
+        # Idempotent: delete any pre-existing slides for this version (re-parse case)
+        db.query(Slide).filter(Slide.version_id == version_id).delete()
+        db.commit()
+
+        for ps in parsed.slides:
+            fp = _fingerprint(ps.native_text)
+            slide = Slide(
+                version_id=version_id,
+                page_no=ps.page_no,
+                title=ps.title,
+                native_text=ps.native_text,
+                notes_text=ps.notes_text,
+                content_json={**ps.content_json, "relationships": ps.relationships},
+                fingerprint=fp,
+                parse_status="success",
+                text_search=None,  # filled by index step below
+            )
+            db.add(slide)
+            db.flush()
+            # Build full-text index (app-layer jieba)
+            index_slide(db, slide)
+
+        version.page_count = page_count
+        # Move to BASIC_READY if render also done, else stay RENDERING-ish; set conservatively
+        # (render task will finalize BASIC_READY)
+        version.status = "PARSED"
+        presentation = db.get(Presentation, version.presentation_id)
+        if presentation:
+            presentation.page_count = page_count
+
+        mark_success(db, job)
+        db.commit()
+        logger.info("Parsed version %s: %d slides", version_id, page_count)
+
+        # Trigger render (parallel pipeline)
+        from app.tasks.render import render_preview_task
+        render_preview_task.delay(version_id)
+
+        return {"version_id": version_id, "slides": page_count}
+    except Exception as e:
+        logger.exception("parse_openxml failed for %s", version_id)
+        db.rollback()
+        try:
+            job = db.query(Job).filter(Job.job_type == "parse_openxml",
+                                       Job.target_id == version_id).first()
+            v = db.get(PresentationVersion, version_id)
+            if v:
+                v.status = "PARTIAL_FAILED"
+                db.commit()
+            if job:
+                mark_failed(db, job, "PARSE_ERROR", str(e)[:500])
+        except Exception:
+            pass
+        raise
+    finally:
+        db.close()

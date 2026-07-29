@@ -1,0 +1,50 @@
+# --- Secrets / env (never commit) ---
+.env
+.env.*.local
+
+# --- Source material (provided inputs, not project code) ---
+PPT素材库_PRD与原型图.zip
+PPT素材库_extracted/
+*.png
+*.jpg
+*.jpeg
+*.webp
+# ...but keep images referenced by docs (none currently); docs are markdown only
+
+# --- Playwright-cli session artifacts ---
+.playwright-cli/
+
+# --- Node / Next.js ---
+node_modules/
+.next/
+out/
+frontend/.next/
+frontend/node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+dist/
+build/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# --- Editors / OS ---
+.vscode/
+.idea/
+.DS_Store
+*.swp
+*.swo
+
+# --- Docker local volumes (shouldn't exist in repo, but just in case) ---
+postgres_data/
+minio_data/
