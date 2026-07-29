@@ -95,6 +95,10 @@ class JobOut(BaseModel):
     started_at: Optional[datetime]
     finished_at: Optional[datetime]
     created_at: datetime
+    # Resolved target display info (joined for the jobs table, N+1-safe).
+    target_name: Optional[str] = None  # version→original_filename; slide→title
+    target_parent_name: Optional[str] = None  # owning Presentation.title
+    target_page_no: Optional[int] = None  # slide tasks only
 
 
 class UploadResponse(BaseModel):

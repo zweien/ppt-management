@@ -6,11 +6,96 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
 from app.db.session import get_db
-from app.models import Job, User
+from app.models import Job, Presentation, PresentationVersion, Slide, User
 from app.schemas.presentation import JobOut
 from app.services.jobs import find_or_create_job
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
+
+
+def _to_jobout(
+    j: Job,
+    version_map: dict[str, PresentationVersion] | None = None,
+    slide_map: dict[str, Slide] | None = None,
+    pres_map: dict[str, Presentation] | None = None,
+) -> JobOut:
+    """Build a JobOut, optionally filling target display info from pre-fetched
+    maps. When maps are None the three target_* fields fall back to None."""
+    target_name: str | None = None
+    target_parent_name: str | None = None
+    target_page_no: int | None = None
+
+    if j.target_type == "version" and version_map is not None:
+        v = version_map.get(j.target_id)
+        if v is not None:
+            target_name = v.original_filename or None
+            if pres_map is not None:
+                p = pres_map.get(v.presentation_id)
+                if p is not None:
+                    target_parent_name = p.title
+    elif j.target_type == "slide" and slide_map is not None:
+        s = slide_map.get(j.target_id)
+        if s is not None:
+            target_name = s.title or None
+            target_page_no = s.page_no
+            if version_map is not None and pres_map is not None:
+                v = version_map.get(s.version_id)
+                if v is not None:
+                    p = pres_map.get(v.presentation_id)
+                    if p is not None:
+                        target_parent_name = p.title
+
+    return JobOut(
+        id=j.id, job_type=j.job_type, target_type=j.target_type, target_id=j.target_id,
+        status=j.status, progress=j.progress, error_code=j.error_code,
+        error_message=j.error_message, stage=j.stage, started_at=j.started_at,
+        finished_at=j.finished_at, created_at=j.created_at,
+        target_name=target_name, target_parent_name=target_parent_name,
+        target_page_no=target_page_no,
+    )
+
+
+def _resolve_targets(db: Session, jobs: list[Job]) -> tuple[dict, dict, dict]:
+    """Batch-fetch version/slide/presentation rows for the given jobs to avoid
+    N+1. Returns (version_map, slide_map, pres_map) keyed by id."""
+    version_ids = {j.target_id for j in jobs if j.target_type == "version"}
+    slide_ids = {j.target_id for j in jobs if j.target_type == "slide"}
+
+    version_map: dict[str, PresentationVersion] = {}
+    slide_map: dict[str, Slide] = {}
+    pres_ids: set[str] = set()
+
+    if version_ids:
+        for v in db.query(PresentationVersion).filter(
+            PresentationVersion.id.in_(version_ids)
+        ).all():
+            version_map[v.id] = v
+            pres_ids.add(v.presentation_id)
+    # Slides need their parent version → presentation, so also fetch those versions.
+    if slide_ids:
+        for s in db.query(Slide).filter(Slide.id.in_(slide_ids)).all():
+            slide_map[s.id] = s
+            pres_ids_versions = {s.version_id for s in slide_map.values()}
+            # Fetch versions not already loaded.
+            missing = pres_ids_versions - set(version_map.keys())
+            if missing:
+                for v in db.query(PresentationVersion).filter(
+                    PresentationVersion.id.in_(missing)
+                ).all():
+                    version_map[v.id] = v
+                    pres_ids.add(v.presentation_id)
+            else:
+                for vid in pres_ids_versions:
+                    v = version_map.get(vid)
+                    if v is not None:
+                        pres_ids.add(v.presentation_id)
+
+    pres_map: dict[str, Presentation] = {}
+    if pres_ids:
+        for p in db.query(Presentation).filter(Presentation.id.in_(pres_ids)).all():
+            pres_map[p.id] = p
+
+    return version_map, slide_map, pres_map
 
 
 @router.get("", response_model=list[JobOut])
@@ -30,12 +115,8 @@ def list_jobs(
     if status_filter:
         q = q.filter(Job.status == status_filter)
     jobs = q.order_by(Job.created_at.desc()).limit(limit).all()
-    return [JobOut(
-        id=j.id, job_type=j.job_type, target_type=j.target_type, target_id=j.target_id,
-        status=j.status, progress=j.progress, error_code=j.error_code,
-        error_message=j.error_message, stage=j.stage, started_at=j.started_at,
-        finished_at=j.finished_at, created_at=j.created_at,
-    ) for j in jobs]
+    version_map, slide_map, pres_map = _resolve_targets(db, jobs)
+    return [_to_jobout(j, version_map, slide_map, pres_map) for j in jobs]
 
 
 @router.get("/{job_id}", response_model=JobOut)
@@ -44,12 +125,8 @@ def get_job(job_id: str, db: Session = Depends(get_db),
     j = db.get(Job, job_id)
     if not j:
         raise HTTPException(status_code=404, detail="任务不存在")
-    return JobOut(
-        id=j.id, job_type=j.job_type, target_type=j.target_type, target_id=j.target_id,
-        status=j.status, progress=j.progress, error_code=j.error_code,
-        error_message=j.error_message, stage=j.stage, started_at=j.started_at,
-        finished_at=j.finished_at, created_at=j.created_at,
-    )
+    version_map, slide_map, pres_map = _resolve_targets(db, [j])
+    return _to_jobout(j, version_map, slide_map, pres_map)
 
 
 @router.post("/{job_id}/retry", response_model=JobOut)
@@ -72,12 +149,8 @@ def retry_job(job_id: str, db: Session = Depends(get_db),
     db.refresh(j)
     # Re-trigger the actual task (lazy import to avoid circular)
     _dispatch_retry(j)
-    return JobOut(
-        id=j.id, job_type=j.job_type, target_type=j.target_type, target_id=j.target_id,
-        status=j.status, progress=j.progress, error_code=j.error_code,
-        error_message=j.error_message, stage=j.stage, started_at=j.started_at,
-        finished_at=j.finished_at, created_at=j.created_at,
-    )
+    version_map, slide_map, pres_map = _resolve_targets(db, [j])
+    return _to_jobout(j, version_map, slide_map, pres_map)
 
 
 def _dispatch_retry(job: Job) -> None:
