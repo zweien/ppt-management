@@ -5,6 +5,19 @@
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-07-30
+
+本版聚焦:上传体验优化 + 管理员设置页(配置全量 DB 化)。
+
+### ✨ 新功能
+
+- **管理员设置页**:业务可调配置(上传限制、AI 服务地址、Token 过期、CORS)从 env 迁到 DB,运行时可改、立即生效(api/worker 缓存 ≤30s)。新增 `AppSetting` 表 + `runtime_config`(DB 优先 fallback env,内存缓存 TTL 30s)+ `require_superuser` 依赖 + `GET/PATCH /api/settings`。前端 5 Tabs 设置页(上传与安全 / AI 服务 / 访问与安全 / 模型配置 / 系统信息只读脱敏);模型配置从独立页并入设置,`/models` 重定向 (`000c83d`)
+- **上传体验优化**:解决文件被传输两次的根因(原 suggest-version 先传一遍找相似,uploads 再传一遍)。客户端算 SHA-256 → `/api/uploads/check` 预检查重 → 只传一次;新增 `UploadQueue` 浮层(多文件、并发限 3、独立进度+取消、重复确认 Modal);客户端选择即校验(扩展名/大小,上限从 `GET /` 的 `upload_limits` 拉取);文件列表处理中行显示解析进度条(`PresentationOut` 加 `parse_progress`/`parse_stage`) (`d4dade0`)
+
+### 🐛 修复
+
+- 无(本版无独立修复,见 0.4.0 及之前)
+
 ## [0.4.0] - 2026-07-30
 
 本版聚焦:任务中心信息密度增强 + 搜索栏/侧边栏 UX 修复。

@@ -93,6 +93,19 @@ export const CHANGELOG: ChangelogEntry[] = [
     sections: [],
   },
   {
+    version: "0.5.0",
+    date: "2026-07-30",
+    sections: [
+      {
+        kind: "✨ 新功能",
+        items: [
+          "管理员设置页:业务可调配置(上传限制/AI服务地址/Token过期/CORS)DB 化,运行时可改、立即生效(DB 优先 + 缓存 30s);新增 AppSetting 表 + runtime_config + require_superuser;前端 5 Tabs(上传/AI/访问/模型配置/系统信息脱敏),模型配置并入设置,/models 重定向",
+          "上传体验优化:去双传(客户端算 SHA-256 → /api/uploads/check 预检 → 只传一次)+ UploadQueue 浮层(多文件/并发3/独立进度+取消/重复确认)+ 客户端选择即校验 + 文件列表解析进度条",
+        ],
+      },
+    ],
+  },
+  {
     version: "0.4.0",
     date: "2026-07-30",
     sections: [
