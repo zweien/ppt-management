@@ -94,6 +94,58 @@ def restore_presentation(pres_id: str, db: Session = Depends(get_db),
     return {"detail": "已恢复"}
 
 
+@router.post("/presentations/{pres_id}/reparse")
+def reparse_presentation(pres_id: str, db: Session = Depends(get_db),
+                         user: User = Depends(get_current_user)) -> dict:
+    """对已上传文件重新触发增强解析流水线(MinerU + 视觉 + embedding)。
+
+    要求源文件已完成基础解析与渲染(状态 BASIC_READY 以上,有 preview.pdf)。
+    """
+    pres = db.get(Presentation, pres_id)
+    if not pres:
+        raise HTTPException(status_code=404, detail="文件不存在")
+    version = db.get(PresentationVersion, pres.current_version_id) if pres.current_version_id else None
+    if not version:
+        raise HTTPException(status_code=400, detail="当前版本不存在")
+    if version.status not in ("BASIC_READY", "ENRICHED", "READY", "PARSED", "RENDERING", "PARTIAL_FAILED"):
+        raise HTTPException(status_code=400, detail=f"文件尚未完成基础解析(当前 {version.status})")
+
+    # 重置该版本上失败/成功的增强任务,使其可重跑(幂等键复用)
+    from app.models import Job
+    from app.services.jobs import find_or_create_job
+    db.query(Job).filter(
+        Job.target_id == version.id, Job.job_type.in_(["parse_mineru"])
+    ).update({Job.status: "pending", Job.error_code: None, Job.error_message: None,
+              Job.started_at: None, Job.finished_at: None, Job.progress: 0}, synchronize_session=False)
+    db.commit()
+
+    # 触发 MinerU(视觉/embedding 由配置驱动,在 mineru 之外独立触发)
+    try:
+        from app.tasks.mineru import parse_mineru_task
+        parse_mineru_task.delay(version.id)
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"无法投递 MinerU 任务:{e}")
+
+    # 若配置了 default vision,顺带重跑视觉分析
+    try:
+        from app.models import ModelConfig
+        has_vision = db.query(ModelConfig).filter(
+            ModelConfig.capability == "vision", ModelConfig.is_default.is_(True), ModelConfig.is_enabled.is_(True)
+        ).first()
+        if has_vision:
+            from app.tasks.ai import analyze_visual_task
+            from app.models import Slide
+            for s in db.query(Slide).filter(Slide.version_id == version.id).all():
+                db.query(Job).filter(Job.target_id == s.id, Job.job_type == "analyze_visual").update(
+                    {Job.status: "pending", Job.error_code: None, Job.error_message: None}, synchronize_session=False)
+                analyze_visual_task.delay(s.id)
+            db.commit()
+    except Exception:
+        pass
+
+    return {"detail": "已重新触发增强解析,可在任务中心查看进度"}
+
+
 @router.get("/pages", response_model=list[SlideOut])
 def browse_pages(
     page: int = Query(1, ge=1),

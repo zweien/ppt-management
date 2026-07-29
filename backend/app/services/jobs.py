@@ -58,6 +58,10 @@ def mark_success(db: Session, job: Job) -> None:
     job.status = "success"
     job.progress = 100
     job.finished_at = datetime.now(timezone.utc)
+    # Clear any stale error from a prior failed attempt (otherwise the task
+    # center shows a misleading error_code on a now-successful job).
+    job.error_code = None
+    job.error_message = None
     db.commit()
 
 

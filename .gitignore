@@ -50,3 +50,4 @@ postgres_data/
 minio_data/
 output/
 *.pdf
+.zcode/

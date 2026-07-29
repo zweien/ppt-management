@@ -85,6 +85,20 @@ export default function FilesPage() {
     }
   }
 
+  const [reparsingId, setReparsingId] = useState<string | null>(null);
+  async function handleReparse(id: string) {
+    setReparsingId(id);
+    setMsg("");
+    try {
+      const r = await api.post<{ detail: string }>(`/api/presentations/${id}/reparse`);
+      setMsg(`${r.detail}(可在任务中心查看进度)`);
+    } catch (e) {
+      setMsg(e instanceof ApiError ? e.message : "重新解析失败");
+    } finally {
+      setReparsingId(null);
+    }
+  }
+
   return (
     <AppShell title="文件管理">
       <div className="space-y-6">
@@ -169,6 +183,9 @@ export default function FilesPage() {
                       ) : (
                         <div className="flex gap-2 justify-end">
                           <Link href={`/files/${p.id}`} className="text-brand-600 hover:underline text-xs">浏览</Link>
+                          <button onClick={() => handleReparse(p.id)} disabled={reparsingId === p.id} className="text-brand-600 hover:underline text-xs disabled:opacity-50">
+                            {reparsingId === p.id ? "提交中" : "重新解析"}
+                          </button>
                           <button onClick={() => handleDelete(p.id)} className="text-red-500 hover:underline text-xs">删除</button>
                         </div>
                       )}

@@ -62,6 +62,20 @@ export default function FileDetailPage() {
     }
   }
 
+  const [reparsing, setReparsing] = useState(false);
+  async function reparse() {
+    setReparsing(true);
+    setMsg("");
+    try {
+      const r = await api.post<{ detail: string }>(`/api/presentations/${id}/reparse`);
+      setMsg(r.detail);
+    } catch (e) {
+      setMsg(e instanceof ApiError ? e.message : "重新解析失败");
+    } finally {
+      setReparsing(false);
+    }
+  }
+
   return (
     <AppShell title={pres ? `文件详情:${pres.title}` : "文件详情"}>
       <div className="space-y-6">
@@ -81,6 +95,14 @@ export default function FileDetailPage() {
                   className="px-3 py-1.5 text-sm border border-brand-200 text-brand-600 rounded-lg hover:bg-brand-50"
                 >
                   下载源 PPTX
+                </button>
+                <button
+                  onClick={reparse}
+                  disabled={reparsing}
+                  title="重新触发 MinerU 增强解析(及视觉/embedding,若已配置模型)"
+                  className="px-3 py-1.5 text-sm border border-brand-200 text-brand-600 rounded-lg hover:bg-brand-50 disabled:opacity-50"
+                >
+                  {reparsing ? "提交中..." : "重新解析"}
                 </button>
               </div>
             </div>
