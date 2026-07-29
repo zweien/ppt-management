@@ -20,7 +20,7 @@ interface TabsProps<K extends string> {
  */
 export function Tabs<K extends string>({ items, value, onChange, className }: TabsProps<K>) {
   return (
-    <div className={cn("inline-flex items-center gap-1 p-1 bg-canvas-soft-2 rounded-pill-sm w-fit", className)}>
+    <div className={cn("inline-flex items-center gap-0.5 p-0.5 bg-canvas-soft-2 rounded-md w-fit h-7", className)}>
       {items.map((item) => {
         const active = item.key === value;
         return (
@@ -28,7 +28,7 @@ export function Tabs<K extends string>({ items, value, onChange, className }: Ta
             key={item.key}
             onClick={() => onChange(item.key)}
             className={cn(
-              "px-3 h-8 text-sm font-medium rounded-pill-sm transition whitespace-nowrap",
+              "px-2.5 h-6 text-xs font-medium rounded-[5px] transition whitespace-nowrap",
               active
                 ? "bg-primary text-on-primary"
                 : "text-body hover:text-ink hover:bg-canvas-soft",

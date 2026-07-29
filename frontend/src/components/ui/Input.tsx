@@ -2,9 +2,10 @@ import { forwardRef } from "react";
 import type { InputHTMLAttributes, SelectHTMLAttributes, TextareaHTMLAttributes } from "react";
 import { cn } from "@/lib/cn";
 
-type Size = "sm" | "md" | "lg";
+type Size = "xs" | "sm" | "md" | "lg";
 
 const SIZE: Record<Size, string> = {
+  xs: "h-7 text-xs px-2.5", // 28px — inline toolbar controls (aligns w/ Checkbox/Tabs)
   sm: "h-8 text-[13px] px-3", // 32px — tight forms
   md: "h-10 text-sm px-3", // 40px — default (--geist-form-height)
   lg: "h-12 text-base px-3", // 48px — hero CTAs

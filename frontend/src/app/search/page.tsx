@@ -138,6 +138,7 @@ export default function SearchPage() {
       <div className="space-y-5">
         {/* Search bar */}
         <div className="bg-surface rounded-md shadow-e2 p-5">
+          {/* Search input row */}
           <div className="flex gap-2">
             <div className="relative flex-1">
               <SearchIcon className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-mute pointer-events-none" />
@@ -154,7 +155,10 @@ export default function SearchPage() {
               搜索
             </Button>
           </div>
-          <div className="mt-4 flex items-center justify-between gap-4 flex-wrap">
+
+          {/* Quick-term presets — sit directly under the input as search hints */}
+          <div className="mt-3 flex items-center gap-2 flex-wrap">
+            <span className="text-xs font-mono uppercase tracking-wider text-mute shrink-0">试试</span>
             <div className="flex items-center gap-1.5 flex-wrap">
               {["无人系统", "总体架构", "项目研究目标", "能力现状"].map((t) => (
                 <button
@@ -166,18 +170,23 @@ export default function SearchPage() {
                 </button>
               ))}
             </div>
-            <div className="flex items-center gap-3 flex-wrap justify-end">
-              <Checkbox checked={favoriteOnly} onChange={(e) => setFavoriteOnly(e.target.checked)} label="仅看收藏" />
-              <Checkbox
-                checked={includeHistorical}
-                onChange={(e) => setIncludeHistorical(e.target.checked)}
-                label="包含历史版本"
-              />
-              <Select inputSize="sm" value={sort} onChange={(e) => setSort(e.target.value)} className="w-28">
-                <option value="relevance">相关度</option>
-                <option value="recent">上传时间</option>
-                <option value="title">标题</option>
-              </Select>
+          </div>
+
+          {/* Result controls — filters / sort / view, all h-7, grouped with dividers */}
+          <div className="mt-3 pt-3 border-t border-hairline flex items-center gap-2 flex-wrap">
+            <Checkbox checked={favoriteOnly} onChange={(e) => setFavoriteOnly(e.target.checked)} label="仅看收藏" />
+            <Checkbox
+              checked={includeHistorical}
+              onChange={(e) => setIncludeHistorical(e.target.checked)}
+              label="包含历史版本"
+            />
+            <span className="w-px h-5 bg-hairline mx-1" aria-hidden />
+            <Select inputSize="xs" value={sort} onChange={(e) => setSort(e.target.value)} className="w-28">
+              <option value="relevance">相关度</option>
+              <option value="recent">上传时间</option>
+              <option value="title">标题</option>
+            </Select>
+            <div className="ml-auto">
               <Tabs
                 items={[
                   { key: "slides", label: "页面卡片" },
