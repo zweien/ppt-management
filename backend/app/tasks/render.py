@@ -40,6 +40,19 @@ def _cleanup_lo_locks() -> None:
             pass
 
 
+def _phash(png_bytes: bytes) -> str | None:
+    """64-bit perceptual hash of a PNG, as hex (ADR-0008 §2)."""
+    try:
+        import io
+        from PIL import Image
+        import imagehash
+        img = Image.open(io.BytesIO(png_bytes))
+        return str(imagehash.phash(img, hash_size=8))
+    except Exception as e:  # noqa: BLE001
+        logger.warning("phash failed: %s", e)
+        return None
+
+
 def _run(cmd: list[str], timeout: int = 120) -> tuple[int, str, str]:
     proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
     return proc.returncode, proc.stdout, proc.stderr
@@ -159,6 +172,8 @@ def render_preview_task(self, version_id: str) -> dict:  # noqa: ANN001
                         storage.put_object(webp_key, f.read(), content_type="image/png")
                     slide.thumbnail_object_key = webp_key
                 slide.preview_object_key = png_key
+                # Perceptual hash for version page matching (ADR-0008 §2)
+                slide.visual_phash = _phash(png_bytes)
 
             # If parse already done (PARSED), promote to BASIC_READY
             db.commit()

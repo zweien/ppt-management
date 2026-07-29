@@ -12,6 +12,7 @@ from app.models.base import (
     SlideTag,
     Tag,
     User,
+    VersionSlideMatch,
 )
 
 __all__ = [
@@ -27,4 +28,5 @@ __all__ = [
     "SlideTag",
     "Tag",
     "User",
+    "VersionSlideMatch",
 ]

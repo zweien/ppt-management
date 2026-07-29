@@ -44,25 +44,24 @@ def _has_vector_search(db: Session) -> ModelConfig | None:
     )
 
 
-def _text_recall(db: Session, seg: str, topn: int) -> list[tuple[Slide, str, int]]:
+def _text_recall(db: Session, seg: str, topn: int, include_historical: bool = False) -> list[tuple[Slide, str, int]]:
     """全文召回,返回 [(slide, pres_title, rank_index)]"""
     tsq = func.plainto_tsquery("simple", seg)
     from app.models import Presentation, PresentationVersion
-    rows = (
+    q = (
         db.query(Slide, Presentation.title, func.ts_rank(func.to_tsvector("simple", Slide.text_search), tsq).label("rank"))
         .join(PresentationVersion, Slide.version_id == PresentationVersion.id)
         .join(Presentation, PresentationVersion.presentation_id == Presentation.id)
         .filter(Presentation.deleted_at.is_(None))
-        .filter(Presentation.current_version_id == PresentationVersion.id)
         .filter(func.to_tsvector("simple", Slide.text_search).op("@@")(tsq))
-        .order_by(_sa_text("rank desc"))
-        .limit(topn)
-        .all()
     )
+    if not include_historical:
+        q = q.filter(Presentation.current_version_id == PresentationVersion.id)
+    rows = q.order_by(_sa_text("rank desc")).limit(topn).all()
     return [(r[0], r[1], i + 1) for i, r in enumerate(rows)]
 
 
-def _vector_recall(db: Session, seg: str, topn: int) -> list[tuple[Slide, str, int]]:
+def _vector_recall(db: Session, seg: str, topn: int, include_historical: bool = False) -> list[tuple[Slide, str, int]]:
     """向量召回(若有 default embedding 配置且有向量数据)"""
     if not _has_vector_search(db):
         return []
@@ -97,10 +96,11 @@ def _vector_recall(db: Session, seg: str, topn: int) -> list[tuple[Slide, str, i
         .join(PresentationVersion, Slide.version_id == PresentationVersion.id)
         .join(Presentation, PresentationVersion.presentation_id == Presentation.id)
         .filter(Presentation.deleted_at.is_(None))
-        .filter(Presentation.current_version_id == PresentationVersion.id)
         .filter(Slide.id.in_(slide_ids))
-        .all()
     )
+    if not include_historical:
+        slides_q = slides_q.filter(Presentation.current_version_id == PresentationVersion.id)
+    slides_q = slides_q.all()
     by_id = {s.id: (s, t) for s, t in slides_q}
     out = []
     for i, rw in enumerate(rows):
@@ -127,6 +127,7 @@ def hybrid_search(
     tag_ids: list[str] | None = None,
     favorite_user_id: str | None = None,
     favorite_only: bool = False,
+    include_historical: bool = False,
     topn: int = 24,
 ) -> list[HybridHit]:
     """执行混合检索,返回排序后的 HybridHit 列表。"""
@@ -134,21 +135,20 @@ def hybrid_search(
     if not seg and not tag_ids and not favorite_only:
         # empty: return recent
         from app.models import Presentation, PresentationVersion
-        rows = (
+        q = (
             db.query(Slide, Presentation.title)
             .join(PresentationVersion, Slide.version_id == PresentationVersion.id)
             .join(Presentation, PresentationVersion.presentation_id == Presentation.id)
             .filter(Presentation.deleted_at.is_(None))
-            .filter(Presentation.current_version_id == PresentationVersion.id)
-            .order_by(Slide.created_at.desc())
-            .limit(topn)
-            .all()
         )
+        if not include_historical:
+            q = q.filter(Presentation.current_version_id == PresentationVersion.id)
+        rows = q.order_by(Slide.created_at.desc()).limit(topn).all()
         return [HybridHit(slide=s, score=0.0, presentation_title=t) for s, t in rows]
 
     # recall both paths
-    text_hits = _text_recall(db, seg, EACH_TOPN) if seg else []
-    vec_hits = _vector_recall(db, seg, EACH_TOPN) if seg else []
+    text_hits = _text_recall(db, seg, EACH_TOPN, include_historical) if seg else []
+    vec_hits = _vector_recall(db, seg, EACH_TOPN, include_historical) if seg else []
 
     # collect candidates
     candidates: dict[str, HybridHit] = {}
@@ -166,15 +166,15 @@ def hybrid_search(
     # if pure filter (no query), start from all current slides
     if not seg:
         from app.models import Presentation, PresentationVersion
-        rows = (
+        q = (
             db.query(Slide, Presentation.title)
             .join(PresentationVersion, Slide.version_id == PresentationVersion.id)
             .join(Presentation, PresentationVersion.presentation_id == Presentation.id)
             .filter(Presentation.deleted_at.is_(None))
-            .filter(Presentation.current_version_id == PresentationVersion.id)
-            .limit(EACH_TOPN)
-            .all()
         )
+        if not include_historical:
+            q = q.filter(Presentation.current_version_id == PresentationVersion.id)
+        rows = q.limit(EACH_TOPN).all()
         for s, t in rows:
             candidates.setdefault(s.id, HybridHit(slide=s, score=0.0, presentation_title=t))
 

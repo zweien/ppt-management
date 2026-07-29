@@ -82,8 +82,13 @@ def process_upload(
     user: User,
     filename: str,
     content: bytes,
+    parent_presentation_id: str | None = None,
 ) -> UploadResult:
-    """校验、去重、落盘、建记录。"""
+    """校验、去重、落盘、建记录。
+
+    parent_presentation_id 非空时,作为该 presentation 的新版本(version_no 自增),
+    而非新建 presentation(版本管理,ADR-0008 / §10.1)。
+    """
     _validate_pptx(filename, content)
     sha = _sha256(content)
 
@@ -98,18 +103,32 @@ def process_upload(
         pres = db.get(Presentation, existing_version.presentation_id)
         return UploadResult(presentation=pres, version=existing_version, is_duplicate=True, job=None)
 
-    # Create presentation + version
-    presentation = Presentation(
-        title=_derive_title(filename),
-        owner_id=user.id,
-        page_count=0,
-    )
-    db.add(presentation)
-    db.flush()  # get id
+    if parent_presentation_id:
+        # 作为已有 presentation 的新版本
+        presentation = db.get(Presentation, parent_presentation_id)
+        if not presentation or presentation.deleted_at is not None:
+            raise UploadError("INVALID_PARENT", "指定的父文件不存在或已删除")
+        max_vno = (
+            db.query(PresentationVersion.version_no)
+            .filter(PresentationVersion.presentation_id == parent_presentation_id)
+            .order_by(PresentationVersion.version_no.desc())
+            .first()
+        )
+        next_vno = (max_vno[0] + 1) if max_vno else 1
+    else:
+        # 新文件
+        presentation = Presentation(
+            title=_derive_title(filename),
+            owner_id=user.id,
+            page_count=0,
+        )
+        db.add(presentation)
+        db.flush()
+        next_vno = 1
 
     version = PresentationVersion(
         presentation_id=presentation.id,
-        version_no=1,
+        version_no=next_vno,
         source_object_key="",  # set after storage
         sha256=sha,
         page_count=0,

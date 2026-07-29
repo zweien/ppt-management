@@ -240,6 +240,60 @@ def patch_slide(slide_id: str, body: dict, db: Session = Depends(get_db),
     return SlideOut.from_model(s)
 
 
+@router.post("/presentations/{pres_id}/versions/{vid}/set-current")
+def set_current_version(pres_id: str, vid: str, db: Session = Depends(get_db),
+                        user: User = Depends(get_current_user)) -> dict:
+    """切换当前版本(PRD §10.4)。"""
+    pres = db.get(Presentation, pres_id)
+    if not pres:
+        raise HTTPException(404, "文件不存在")
+    version = db.get(PresentationVersion, vid)
+    if not version or version.presentation_id != pres_id:
+        raise HTTPException(400, "版本不属于该文件")
+    pres.current_version_id = vid
+    db.commit()
+    return {"detail": f"已切换当前版本为 v{version.version_no}"}
+
+
+@router.post("/slides/{slide_id}/exports/pptx")
+def export_slide(slide_id: str, db: Session = Depends(get_db),
+                 user: User = Depends(get_current_user)) -> dict:
+    """触发单页 PPTX 导出(ADR-0002),返回导出任务结果。"""
+    slide = db.get(Slide, slide_id)
+    if not slide:
+        raise HTTPException(404, "页面不存在")
+    from app.tasks.export import export_single_slide_task
+    # 同步等待结果(导出较快,结构遍历 + 存储约 1-2s)
+    res = export_single_slide_task.apply(args=[slide_id]).get(timeout=120)
+    if not res.get("object_key"):
+        raise HTTPException(400, res.get("error") or "导出失败")
+    # 返回签名下载 URL
+    storage = get_storage()
+    url = storage.presigned_get_url(res["object_key"], expires=3600)
+    return {"status": res["status"], "download_url": url, "object_key": res["object_key"]}
+
+
+@router.get("/presentations/{pres_id}/version-diff")
+def version_diff(pres_id: str, from_vid: str = Query(...), to_vid: str = Query(...),
+                 db: Session = Depends(get_db), user: User = Depends(get_current_user)) -> dict:
+    """版本间页面差异(ADR-0008 §2)。返回各 match_type 的统计与明细。"""
+    from app.models import VersionSlideMatch
+    rows = db.query(VersionSlideMatch).filter(
+        VersionSlideMatch.from_version_id == from_vid,
+        VersionSlideMatch.to_version_id == to_vid,
+    ).all()
+    groups: dict[str, list] = {}
+    for r in rows:
+        groups.setdefault(r.match_type, []).append({
+            "from_slide_id": r.from_slide_id, "to_slide_id": r.to_slide_id,
+            "score": r.score,
+        })
+    return {
+        "summary": {k: len(v) for k, v in groups.items()},
+        "details": groups,
+    }
+
+
 @router.get("/presentations/{pres_id}/download-source")
 def download_source(pres_id: str, version_id: str | None = Query(None),
                     db: Session = Depends(get_db), user: User = Depends(get_current_user)):

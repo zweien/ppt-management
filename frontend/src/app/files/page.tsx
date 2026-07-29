@@ -52,11 +52,31 @@ export default function FilesPage() {
 
   async function handleUpload(file: File) {
     setUploading(true); setMsg("");
-    const form = new FormData();
-    form.append("file", file);
     try {
+      // 先做版本候选建议(ADR-0008):若与已有文件相似,问用户是否作为新版本
+      let parentId: string | undefined = undefined;
+      try {
+        const sForm = new FormData();
+        sForm.append("file", file);
+        const sug = await api.postForm<{ page_count: number; candidates: { presentation_id: string; title: string; similarity: number }[] }>(
+          "/api/uploads/suggest-version", sForm
+        );
+        if (sug.candidates.length > 0) {
+          const top = sug.candidates[0];
+          const choice = confirm(
+            `检测到与已有文件相似:\n\n《${top.title}》(相似度 ${(top.similarity * 100).toFixed(0)}%)\n\n确定 = 作为该文件的新版本(v)\n取消 = 作为全新文件上传`
+          );
+          if (choice) parentId = top.presentation_id;
+        }
+      } catch {
+        /* 建议失败不阻断,按新文件上传 */
+      }
+
+      const form = new FormData();
+      form.append("file", file);
+      if (parentId) form.append("parent_presentation_id", parentId);
       const res = await api.postForm<{ message: string; is_duplicate: boolean }>("/api/uploads", form);
-      setMsg(res.message);
+      setMsg(res.message + (parentId ? `(已关联为新版本)` : ""));
       await load();
     } catch (e) {
       setMsg(e instanceof ApiError ? e.message : "上传失败");

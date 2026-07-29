@@ -34,6 +34,8 @@ export default function SlideDetailDrawer({
   const [showAi, setShowAi] = useState(false);
   const [tab, setTab] = useState<"basic" | "text" | "mineru" | "tags" | "file">("basic");
   const [loading, setLoading] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [exportMsg, setExportMsg] = useState("");
 
   useEffect(() => {
     if (!slide) {
@@ -91,6 +93,28 @@ export default function SlideDetailDrawer({
     }
   }
 
+  async function exportSingleSlide() {
+    if (!slide) return;
+    setExporting(true);
+    setExportMsg("");
+    try {
+      const r = await api.post<{ status: string; download_url: string }>(`/api/slides/${slide.id}/exports/pptx`);
+      if (r.download_url) {
+        const a = document.createElement("a");
+        a.href = r.download_url;
+        a.download = `slide-${slide.page_no}.pptx`;
+        a.click();
+        setExportMsg("已导出单页 PPTX");
+      } else {
+        setExportMsg("导出失败");
+      }
+    } catch (e) {
+      setExportMsg(e instanceof ApiError ? e.message : "导出失败");
+    } finally {
+      setExporting(false);
+    }
+  }
+
   return (
     <div className="fixed inset-0 z-40 flex justify-end">
       <div className="absolute inset-0 bg-black/30" onClick={onClose} />
@@ -119,16 +143,22 @@ export default function SlideDetailDrawer({
                 )}
               </div>
 
-              <div className="flex gap-2 flex-wrap">
+              <div className="flex gap-2 flex-wrap items-center">
                 <button onClick={() => downloadPng(detail)} className="px-3 py-1.5 text-sm bg-brand-500 text-white rounded-lg hover:bg-brand-600">
                   下载图片
                 </button>
                 <button onClick={() => copyText(detail)} className="px-3 py-1.5 text-sm border border-brand-200 text-brand-600 rounded-lg hover:bg-brand-50">
                   复制文字
                 </button>
-                <button disabled className="px-3 py-1.5 text-sm border border-gray-200 text-gray-300 rounded-lg cursor-not-allowed" title="阶段三支持">
-                  导出单页 PPTX
+                <button
+                  onClick={() => exportSingleSlide()}
+                  disabled={exporting}
+                  className="px-3 py-1.5 text-sm border border-brand-200 text-brand-600 rounded-lg hover:bg-brand-50 disabled:opacity-50"
+                  title="复制源 PPTX 目标页及依赖,生成仅含该页的可编辑 PPTX"
+                >
+                  {exporting ? "导出中..." : "导出单页 PPTX"}
                 </button>
+                {exportMsg && <span className="text-xs text-gray-500">{exportMsg}</span>}
               </div>
 
               <div className="border-b border-gray-200 flex gap-1 overflow-x-auto">

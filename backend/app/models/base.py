@@ -238,3 +238,21 @@ class ExportFile(Base, TimestampMixin):
     object_key: Mapped[str | None] = mapped_column(Text)
     validation_status: Mapped[str] = mapped_column(String(20), default="pending", nullable=False)
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class VersionSlideMatch(Base):
+    """版本间页面变化匹配(ADR-0008 §2)。
+
+    match_type: unchanged / modified / added / deleted / rearranged
+    from_slide_id 在旧版本,to_slide_id 在新版本。
+    added/deleted 时另一侧为 NULL(用 from_slide_id 存在侧,to_slide_id 空=deleted;反之 added)。
+    """
+    __tablename__ = "version_slide_matches"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    from_slide_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("slides.id", ondelete="CASCADE"))
+    to_slide_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("slides.id", ondelete="CASCADE"))
+    from_version_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    to_version_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    match_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    score: Mapped[float | None] = mapped_column(Float)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)

@@ -49,6 +49,7 @@ export default function SearchPage() {
   const [facets, setFacets] = useState<TagFacet[]>([]);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [favoriteOnly, setFavoriteOnly] = useState(false);
+  const [includeHistorical, setIncludeHistorical] = useState(false);
   const [sort, setSort] = useState("relevance");
   const [view, setView] = useState<"slides" | "presentations">("slides");
   const [loading, setLoading] = useState(false);
@@ -64,7 +65,7 @@ export default function SearchPage() {
     try {
       const [hits, gs, fc] = await Promise.all([
         api.get<HitResult[]>(
-          `/api/search/slides?q=${encodeURIComponent(query)}&tag_ids=${tagParam}&favorite_only=${favoriteOnly}&sort=${sort}`
+          `/api/search/slides?q=${encodeURIComponent(query)}&tag_ids=${tagParam}&favorite_only=${favoriteOnly}&include_historical=${includeHistorical}&sort=${sort}`
         ),
         api.get<PresGroup[]>(
           `/api/search/presentations?q=${encodeURIComponent(query)}&tag_ids=${tagParam}`
@@ -79,7 +80,7 @@ export default function SearchPage() {
     } finally {
       setLoading(false);
     }
-  }, [query, selectedTags, favoriteOnly, sort]);
+  }, [query, selectedTags, favoriteOnly, includeHistorical, sort]);
 
   useEffect(() => {
     doSearch();
@@ -125,6 +126,10 @@ export default function SearchPage() {
               <label className="flex items-center gap-1 text-gray-500">
                 <input type="checkbox" checked={favoriteOnly} onChange={(e) => setFavoriteOnly(e.target.checked)} />
                 仅看收藏
+              </label>
+              <label className="flex items-center gap-1 text-gray-500">
+                <input type="checkbox" checked={includeHistorical} onChange={(e) => setIncludeHistorical(e.target.checked)} />
+                包含历史版本
               </label>
               <select value={sort} onChange={(e) => setSort(e.target.value)} className="border border-gray-300 rounded px-2 py-1">
                 <option value="relevance">相关度</option>

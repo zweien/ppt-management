@@ -27,6 +27,25 @@ def _fingerprint(native_text: str) -> str:
     return text_fingerprint_hash(norm)
 
 
+def _maybe_match_previous_version(db, version) -> None:
+    """若 version 是其 presentation 的非首版本,与其前一个版本做页面匹配(ADR-0008 §2)。"""
+    from app.services.versioning import match_versions
+    siblings = (
+        db.query(PresentationVersion)
+        .filter(PresentationVersion.presentation_id == version.presentation_id)
+        .order_by(PresentationVersion.version_no)
+        .all()
+    )
+    if len(siblings) < 2:
+        return
+    # 找到当前版本的前一个
+    idx = next((i for i, v in enumerate(siblings) if v.id == version.id), -1)
+    if idx <= 0:
+        return
+    prev = siblings[idx - 1]
+    match_versions(db, prev.id, version.id)
+
+
 @celery_app.task(name="app.tasks.basic.parse_openxml", bind=True, max_retries=2)
 def parse_openxml_task(self, version_id: str) -> dict:  # noqa: ANN001
     """Parse a version's source PPTX and create slides."""
@@ -99,6 +118,13 @@ def parse_openxml_task(self, version_id: str) -> dict:  # noqa: ANN001
                 analyze_visual_task.apply_async(args=[s.id], countdown=20)
         except Exception:
             pass
+
+        # 版本管理:若此版本是某 presentation 的第 2+ 版,与前一个版本做页面匹配(ADR-0008)
+        try:
+            _maybe_match_previous_version(db, version)
+            db.commit()
+        except Exception:
+            logger.warning("version match skipped for %s", version_id, exc_info=True)
 
         return {"version_id": version_id, "slides": page_count}
     except Exception as e:

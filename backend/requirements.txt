@@ -36,8 +36,9 @@ jieba==0.42.1
 # HTTP client for model calls (OpenAI compatible)
 httpx==0.28.1
 
-# Image handling (vision scaling, ADR-0007)
+# Image handling (vision scaling, ADR-0007) + perceptual hash for version match (ADR-0008)
 Pillow==11.0.0
+imagehash==4.3.1
 
 # Testing
 pytest==8.3.4

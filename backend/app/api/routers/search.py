@@ -27,6 +27,7 @@ def search_slides(
     q: str = Query("", description="关键词"),
     tag_ids: str = Query("", description="逗号分隔的标签 id"),
     favorite_only: bool = Query(False),
+    include_historical: bool = Query(False, description="包含历史版本(非当前版本)"),
     sort: str = Query("relevance", pattern="^(relevance|recent|title)$"),
     page: int = Query(1, ge=1),
     page_size: int = Query(24, ge=1, le=100),
@@ -41,6 +42,7 @@ def search_slides(
     hits = hybrid_search(
         db, query, tag_ids=tids,
         favorite_user_id=user.id, favorite_only=favorite_only,
+        include_historical=include_historical,
         topn=page * page_size,
     )
 
