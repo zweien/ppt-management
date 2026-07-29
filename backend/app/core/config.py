@@ -74,6 +74,12 @@ class Settings(BaseSettings):
     # --- MinerU API (ADR-0007): host-side mineru-api service ---
     MINERU_API_URL: str = "http://host.docker.internal:8765"
 
+    # --- Default embedding service (ADR-0008): host-side OpenAI-compatible
+    #     /v1/embeddings service (bge-m3 via sentence-transformers). Container
+    #     reaches host over docker0 bridge 172.17.0.1. ---
+    EMBEDDING_SERVICE_URL: str = "http://172.17.0.1:9997"
+    DEFAULT_EMBEDDING_MODEL: str = "bge-m3"
+
     # --- Vision model image scaling (ADR-0007) ---
     VISION_IMAGE_MAX_LONG_EDGE: int = 1568
 

@@ -4,7 +4,7 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.bootstrap import bootstrap_admin
+from app.api.bootstrap import bootstrap_admin, bootstrap_default_embedding
 from app.api.routers.auth import router as auth_router
 from app.api.routers.health import router as health_router
 from app.api.routers.uploads import router as uploads_router
@@ -44,8 +44,9 @@ def create_app() -> FastAPI:
     def _startup() -> None:
         try:
             bootstrap_admin()
+            bootstrap_default_embedding()
         except Exception as e:  # noqa: BLE001
-            logger.warning("bootstrap_admin failed (DB may not be ready yet): %s", e)
+            logger.warning("bootstrap failed (DB may not be ready yet): %s", e)
 
     @app.get("/")
     def root() -> dict:

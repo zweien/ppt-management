@@ -56,6 +56,8 @@ services:
       SECRET_KEY: ${SECRET_KEY:-dev-secret-change-me}
       APP_ENCRYPTION_KEY: ${APP_ENCRYPTION_KEY:-dGVzdC1tYXN0ZXIta2V5LTEyMzQ1Njc4OTAxMjM0NTY=}
       MINERU_API_URL: ${MINERU_API_URL:-http://host.docker.internal:8765}
+      EMBEDDING_SERVICE_URL: ${EMBEDDING_SERVICE_URL:-http://172.17.0.1:9997}
+      DEFAULT_EMBEDDING_MODEL: ${DEFAULT_EMBEDDING_MODEL:-bge-m3}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:

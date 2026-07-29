@@ -1,0 +1,37 @@
+# Embedding 服务 systemd unit(ADR-0008)。
+# 宿主机常驻 HTTP 服务,与 MinerU(ADR-0007 §6)同一部署哲学:重模型留宿主机 venv,
+# 容器经 docker0 网桥访问。
+#
+# 安装(以当前用户 z 为例,按实际用户/路径调整):
+#   sudo cp infra/systemd/embedding.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now embedding
+#   sudo journalctl -u embedding -f        # 查看日志
+#
+# 注意:bge-m3 首次启动需加载 ~2.3GB 模型到 GPU/内存,服务就绪需 ~30-60s;
+#      health 探针 /health 返回 {"loaded":true} 即就绪。
+
+[Unit]
+Description=PPT 素材库 Embedding 服务 (bge-m3, OpenAI-compatible /v1/embeddings)
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=z
+Group=z
+WorkingDirectory=/home/z/codebase/xinference
+Environment=EMBEDDING_DEVICE=cuda
+# 模型已预下载到本地 modelscope 缓存;离线加载避免联网 etag 校验失败
+Environment=HF_HUB_OFFLINE=1
+Environment=TRANSFORMERS_OFFLINE=1
+ExecStart=/home/z/codebase/xinference/run.sh
+Restart=always
+RestartSec=10
+# 首次加载模型较慢,给足启动时间
+TimeoutStartSec=180
+StandardOutput=append:/home/z/codebase/xinference/logs/embedding.log
+StandardError=append:/home/z/codebase/xinference/logs/embedding.log
+
+[Install]
+WantedBy=multi-user.target
