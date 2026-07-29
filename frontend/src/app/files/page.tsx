@@ -2,57 +2,69 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { UploadCloud, FileText, RefreshCw, Trash2, Eye } from "lucide-react";
 import AppShell from "@/components/AppShell";
 import { api, ApiError, API_BASE } from "@/lib/api";
+import { presStatus } from "@/lib/status";
+import { cn } from "@/lib/cn";
+import Button from "@/components/ui/Button";
+import { Badge } from "@/components/ui/Badge";
+import EmptyState from "@/components/ui/EmptyState";
+import { Table, THead, TH, TBody, TR, TD } from "@/components/ui/DataTable";
+import Modal, { ConfirmFooter } from "@/components/ui/Modal";
+import { useToast } from "@/components/ui/Toast";
 
 interface Version {
-  id: string; version_no: number; status: string; page_count: number;
-  original_filename: string; file_size: number; created_at: string;
+  id: string;
+  version_no: number;
+  status: string;
+  page_count: number;
+  original_filename: string;
+  file_size: number;
+  created_at: string;
 }
 interface Presentation {
-  id: string; title: string; page_count: number; current_version_id: string;
-  current_status: string | null; created_at: string; versions: Version[];
+  id: string;
+  title: string;
+  page_count: number;
+  current_version_id: string;
+  current_status: string | null;
+  created_at: string;
+  versions: Version[];
   deleted_at: string | null;
 }
 
-function statusBadge(status: string) {
-  const map: Record<string, string> = {
-    BASIC_READY: "bg-green-100 text-green-700",
-    READY: "bg-green-100 text-green-700",
-    UPLOADING: "bg-blue-100 text-blue-700",
-    PARSING: "bg-blue-100 text-blue-700",
-    RENDERING: "bg-blue-100 text-blue-700",
-    PARSED: "bg-blue-100 text-blue-700",
-    PARTIAL_FAILED: "bg-red-100 text-red-700",
-  };
-  return map[status] || "bg-gray-100 text-gray-600";
-}
-
 export default function FilesPage() {
+  const toast = useToast();
   const [items, setItems] = useState<Presentation[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0); // 0-100
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadFileName, setUploadFileName] = useState("");
   const [dragOver, setDragOver] = useState(false);
-  const [msg, setMsg] = useState("");
   const [includeDeleted, setIncludeDeleted] = useState(false);
+  const [reparsingId, setReparsingId] = useState<string | null>(null);
+  // Delete confirmation modal state.
+  const [deleteTarget, setDeleteTarget] = useState<Presentation | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const xhrRef = useRef<XMLHttpRequest | null>(null);
 
   async function load() {
     setLoading(true);
     try {
-      const data = await api.get<Presentation[]>(`/api/presentations?include_deleted=${includeDeleted}`);
-      setItems(data);
+      setItems(await api.get<Presentation[]>(`/api/presentations?include_deleted=${includeDeleted}`));
     } catch (e) {
-      setMsg(e instanceof ApiError ? e.message : "加载失败");
+      toast.error(e instanceof ApiError ? e.message : "加载失败");
     } finally {
       setLoading(false);
     }
   }
 
-  useEffect(() => { load(); /* eslint-disable-next-line */ }, [includeDeleted]);
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [includeDeleted]);
 
   function cancelUpload() {
     if (xhrRef.current) {
@@ -62,37 +74,37 @@ export default function FilesPage() {
     setUploading(false);
     setUploadProgress(0);
     setUploadFileName("");
-    setMsg("已取消上传");
+    toast.info("已取消上传");
     if (fileRef.current) fileRef.current.value = "";
   }
 
   async function handleUpload(file: File) {
-    setUploading(true); setMsg(""); setUploadProgress(0); setUploadFileName(file.name);
+    setUploading(true);
+    setUploadProgress(0);
+    setUploadFileName(file.name);
     try {
-      // 先做版本候选建议(ADR-0008):若与已有文件相似,问用户是否作为新版本
-      let parentId: string | undefined = undefined;
+      // Version-candidate suggestion (ADR-0008).
+      let parentId: string | undefined;
       try {
         const sForm = new FormData();
         sForm.append("file", file);
-        const sug = await api.postForm<{ page_count: number; candidates: { presentation_id: string; title: string; similarity: number }[] }>(
-          "/api/uploads/suggest-version", sForm
-        );
+        const sug = await api.postForm<{
+          page_count: number;
+          candidates: { presentation_id: string; title: string; similarity: number }[];
+        }>("/api/uploads/suggest-version", sForm);
         if (sug.candidates.length > 0) {
           const top = sug.candidates[0];
-          const choice = confirm(
-            `检测到与已有文件相似:\n\n《${top.title}》(相似度 ${(top.similarity * 100).toFixed(0)}%)\n\n确定 = 作为该文件的新版本(v)\n取消 = 作为全新文件上传`
-          );
-          if (choice) parentId = top.presentation_id;
+          const ok = await confirmDialog(top);
+          if (ok) parentId = top.presentation_id;
         }
       } catch {
-        /* 建议失败不阻断,按新文件上传 */
+        /* suggestion failure is non-blocking */
       }
 
       const form = new FormData();
       form.append("file", file);
       if (parentId) form.append("parent_presentation_id", parentId);
 
-      // 用 XHR 获取上传进度 + 支持取消(UP-02)
       await new Promise<void>((resolve, reject) => {
         const xhr = new XMLHttpRequest();
         xhrRef.current = xhr;
@@ -104,19 +116,29 @@ export default function FilesPage() {
           if (xhr.status >= 200 && xhr.status < 300) {
             try {
               const res = JSON.parse(xhr.responseText);
-              setMsg(res.message + (parentId ? "(已关联为新版本)" : ""));
+              toast.success(res.message + (parentId ? "(已关联为新版本)" : ""));
             } catch {
-              setMsg("上传成功");
+              toast.success("上传成功");
             }
             resolve();
           } else {
             let detail = `HTTP ${xhr.status}`;
-            try { detail = JSON.parse(xhr.responseText).detail || detail; } catch { /* */ }
+            try {
+              detail = JSON.parse(xhr.responseText).detail || detail;
+            } catch {
+              /* */
+            }
             reject(new Error(detail));
           }
         };
-        xhr.onerror = () => { xhrRef.current = null; reject(new Error("网络错误")); };
-        xhr.onabort = () => { xhrRef.current = null; reject(new Error("aborted")); };
+        xhr.onerror = () => {
+          xhrRef.current = null;
+          reject(new Error("网络错误"));
+        };
+        xhr.onabort = () => {
+          xhrRef.current = null;
+          reject(new Error("aborted"));
+        };
         const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
         xhr.open("POST", `${API_BASE}/api/uploads`);
         if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
@@ -125,7 +147,7 @@ export default function FilesPage() {
       await load();
     } catch (e) {
       const m = e instanceof Error ? e.message : "上传失败";
-      if (m !== "aborted") setMsg(m);
+      if (m !== "aborted") toast.error(m);
     } finally {
       setUploading(false);
       setUploadProgress(0);
@@ -134,34 +156,48 @@ export default function FilesPage() {
     }
   }
 
-  async function handleDelete(id: string) {
-    if (!confirm("确认移入回收站?")) return;
+  // Inline confirm for version-candidate suggestion (kept simple via Modal).
+  const [versionSuggest, setVersionSuggest] = useState<{ title: string; similarity: number } | null>(null);
+  const versionResolve = useRef<((v: boolean) => void) | null>(null);
+  function confirmDialog(top: { title: string; similarity: number }): Promise<boolean> {
+    setVersionSuggest(top);
+    return new Promise((resolve) => {
+      versionResolve.current = resolve;
+    });
+  }
+
+  async function handleDelete() {
+    if (!deleteTarget) return;
+    setDeleting(true);
     try {
-      await api.delete(`/api/presentations/${id}`);
+      await api.delete(`/api/presentations/${deleteTarget.id}`);
+      toast.success("已移入回收站");
+      setDeleteTarget(null);
       await load();
     } catch (e) {
-      setMsg(e instanceof ApiError ? e.message : "删除失败");
+      toast.error(e instanceof ApiError ? e.message : "删除失败");
+    } finally {
+      setDeleting(false);
     }
   }
 
   async function handleRestore(id: string) {
     try {
       await api.post(`/api/presentations/${id}/restore`);
+      toast.success("已恢复");
       await load();
     } catch (e) {
-      setMsg(e instanceof ApiError ? e.message : "恢复失败");
+      toast.error(e instanceof ApiError ? e.message : "恢复失败");
     }
   }
 
-  const [reparsingId, setReparsingId] = useState<string | null>(null);
   async function handleReparse(id: string) {
     setReparsingId(id);
-    setMsg("");
     try {
       const r = await api.post<{ detail: string }>(`/api/presentations/${id}/reparse`);
-      setMsg(`${r.detail}(可在任务中心查看进度)`);
+      toast.success(`${r.detail}(可在任务中心查看进度)`);
     } catch (e) {
-      setMsg(e instanceof ApiError ? e.message : "重新解析失败");
+      toast.error(e instanceof ApiError ? e.message : "重新解析失败");
     } finally {
       setReparsingId(null);
     }
@@ -170,12 +206,17 @@ export default function FilesPage() {
   return (
     <AppShell title="文件管理">
       <div className="space-y-6">
-        <div className="bg-white rounded-xl border border-gray-200 p-5">
+        {/* Upload dropzone */}
+        <div className="bg-surface rounded-md shadow-e2 p-5">
           <div
-            className={`border-2 border-dashed rounded-xl p-6 text-center transition ${
-              dragOver ? "border-brand-400 bg-brand-50" : "border-gray-300"
-            }`}
-            onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+            className={cn(
+              "border-2 border-dashed rounded-md p-6 text-center transition",
+              dragOver ? "border-link bg-link-soft" : "border-hairline-strong",
+            )}
+            onDragOver={(e) => {
+              e.preventDefault();
+              setDragOver(true);
+            }}
             onDragLeave={() => setDragOver(false)}
             onDrop={(e) => {
               e.preventDefault();
@@ -184,15 +225,15 @@ export default function FilesPage() {
               if (f && !uploading) handleUpload(f);
             }}
           >
-            <div className="text-3xl mb-2">📤</div>
-            <div className="text-sm text-gray-600 mb-3">
-              {uploading
-                ? `上传中:${uploadFileName} (${uploadProgress}%)`
-                : "拖拽 PPTX 到此处,或点击选择文件"}
+            <UploadCloud className="w-8 h-8 mx-auto mb-2 text-mute" />
+            <div className="text-sm text-body mb-3">
+              {uploading ? `上传中:${uploadFileName} (${uploadProgress}%)` : "拖拽 PPTX 到此处,或点击选择文件"}
             </div>
             {!uploading && (
-              <label className="px-4 py-2 bg-brand-500 text-white rounded-lg hover:bg-brand-600 cursor-pointer text-sm font-medium inline-block">
-                选择文件上传
+              <label className="inline-block">
+                <Button variant="primary" size="md" onClick={() => fileRef.current?.click()}>
+                  选择文件上传
+                </Button>
                 <input
                   ref={fileRef}
                   type="file"
@@ -207,98 +248,177 @@ export default function FilesPage() {
             )}
             {uploading && (
               <div className="max-w-md mx-auto">
-                <div className="w-full bg-gray-200 rounded-full h-2.5 overflow-hidden">
+                <div className="w-full bg-canvas-soft-2 rounded-pill h-2 overflow-hidden">
                   <div
-                    className="bg-brand-500 h-full transition-all duration-200"
+                    className="bg-primary h-full transition-all duration-200"
                     style={{ width: `${uploadProgress}%` }}
                   />
                 </div>
-                <button
-                  onClick={cancelUpload}
-                  className="mt-3 text-xs text-red-500 hover:underline"
-                >
+                <button onClick={cancelUpload} className="mt-3 text-xs text-error hover:underline">
                   取消上传
                 </button>
               </div>
             )}
           </div>
-          <p className="text-xs text-gray-400 mt-3">仅支持 .pptx(不支持 .ppt / 加密文件)。完全相同文件将提示重复。</p>
-          {msg && <div className="mt-2 text-sm text-brand-600">{msg}</div>}
+          <p className="text-xs text-mute mt-3">仅支持 .pptx(不支持 .ppt / 加密文件)。完全相同文件将提示重复。</p>
         </div>
 
+        {/* List header */}
         <div className="flex items-center justify-between">
-          <h2 className="font-medium text-gray-700">
-            文件列表 {includeDeleted ? "(含回收站)" : ""} ({items.length})
+          <h2 className="text-sm font-medium text-body">
+            文件列表 {includeDeleted ? "(含回收站)" : ""} · {items.length}
           </h2>
-          <label className="flex items-center gap-2 text-sm text-gray-500">
-            <input type="checkbox" checked={includeDeleted} onChange={(e) => setIncludeDeleted(e.target.checked)} />
+          <label className="flex items-center gap-2 text-sm text-body cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={includeDeleted}
+              onChange={(e) => setIncludeDeleted(e.target.checked)}
+              className="accent-[rgb(var(--primary))]"
+            />
             显示已删除
           </label>
         </div>
 
         {loading ? (
-          <div className="text-gray-400 text-sm">加载中...</div>
+          <div className="text-mute text-sm">加载中...</div>
         ) : items.length === 0 ? (
-          <div className="bg-white rounded-xl border border-dashed border-gray-300 p-12 text-center text-gray-400">
-            暂无文件,请上传一份 PPTX 开始
-          </div>
+          <EmptyState
+            icon={<FileText className="w-5 h-5" />}
+            title="暂无文件"
+            description="上传一份 PPTX 开始,系统会自动解析、渲染与建立索引。"
+          />
         ) : (
-          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 text-gray-500 text-xs uppercase">
-                <tr>
-                  <th className="text-left px-4 py-3">文件名</th>
-                  <th className="text-left px-4 py-3">页数</th>
-                  <th className="text-left px-4 py-3">状态</th>
-                  <th className="text-left px-4 py-3">大小</th>
-                  <th className="text-left px-4 py-3">上传时间</th>
-                  <th className="text-right px-4 py-3">操作</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {items.map((p) => (
-                  <tr key={p.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3">
+          <Table>
+            <THead>
+              <TH>文件名</TH>
+              <TH>页数</TH>
+              <TH>状态</TH>
+              <TH>大小</TH>
+              <TH>上传时间</TH>
+              <TH className="text-right">操作</TH>
+            </THead>
+            <TBody>
+              {items.map((p) => {
+                const st = presStatus(p.current_status || "");
+                return (
+                  <TR key={p.id}>
+                    <TD>
                       {p.deleted_at ? (
-                        <span className="text-gray-400 line-through">{p.title}</span>
+                        <span className="text-mute line-through">{p.title}</span>
                       ) : (
-                        <Link href={`/files/${p.id}`} className="text-brand-600 hover:underline font-medium">
+                        <Link href={`/files/${p.id}`} className="text-link hover:link-deep font-medium">
                           {p.title}
                         </Link>
                       )}
-                    </td>
-                    <td className="px-4 py-3 text-gray-600">{p.page_count}</td>
-                    <td className="px-4 py-3">
-                      <span className={`px-2 py-0.5 rounded text-xs ${statusBadge(p.current_status || "")}`}>
-                        {p.current_status || "-"}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-gray-500">
+                    </TD>
+                    <TD>{p.page_count}</TD>
+                    <TD>
+                      <Badge tone={st.tone} dot>
+                        {st.label}
+                      </Badge>
+                    </TD>
+                    <TD className="text-mute">
                       {p.versions[0] ? `${(p.versions[0].file_size / 1024).toFixed(0)} KB` : "-"}
-                    </td>
-                    <td className="px-4 py-3 text-gray-500">{new Date(p.created_at).toLocaleString("zh-CN")}</td>
-                    <td className="px-4 py-3 text-right">
+                    </TD>
+                    <TD className="text-mute text-xs">{new Date(p.created_at).toLocaleString("zh-CN")}</TD>
+                    <TD className="text-right">
                       {p.deleted_at ? (
-                        <button onClick={() => handleRestore(p.id)} className="text-brand-600 hover:underline text-xs">
+                        <Button size="sm" variant="ghost" onClick={() => handleRestore(p.id)}>
                           恢复
-                        </button>
+                        </Button>
                       ) : (
-                        <div className="flex gap-2 justify-end">
-                          <Link href={`/files/${p.id}`} className="text-brand-600 hover:underline text-xs">浏览</Link>
-                          <button onClick={() => handleReparse(p.id)} disabled={reparsingId === p.id} className="text-brand-600 hover:underline text-xs disabled:opacity-50">
-                            {reparsingId === p.id ? "提交中" : "重新解析"}
-                          </button>
-                          <button onClick={() => handleDelete(p.id)} className="text-red-500 hover:underline text-xs">删除</button>
+                        <div className="inline-flex gap-1">
+                          <Link href={`/files/${p.id}`}>
+                            <Button size="sm" variant="ghost" leadingIcon={<Eye className="w-3.5 h-3.5" />}>
+                              浏览
+                            </Button>
+                          </Link>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            loading={reparsingId === p.id}
+                            onClick={() => handleReparse(p.id)}
+                            leadingIcon={<RefreshCw className="w-3.5 h-3.5" />}
+                          >
+                            重新解析
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="text-error-deep hover:text-error"
+                            leadingIcon={<Trash2 className="w-3.5 h-3.5" />}
+                            onClick={() => setDeleteTarget(p)}
+                          >
+                            删除
+                          </Button>
                         </div>
                       )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                    </TD>
+                  </TR>
+                );
+              })}
+            </TBody>
+          </Table>
         )}
       </div>
+
+      {/* Delete confirm */}
+      <Modal
+        open={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        title="移入回收站?"
+        description={`《${deleteTarget?.title || ""}》将被软删除,可在回收站恢复。`}
+        size="sm"
+        footer={
+          <ConfirmFooter
+            destructive
+            confirmText="移入回收站"
+            loading={deleting}
+            onCancel={() => setDeleteTarget(null)}
+            onConfirm={handleDelete}
+          />
+        }
+      />
+
+      {/* Version-candidate suggestion */}
+      <Modal
+        open={!!versionSuggest}
+        onClose={() => {
+          setVersionSuggest(null);
+          versionResolve.current?.(false);
+        }}
+        title="检测到相似文件"
+        description={
+          versionSuggest
+            ? `《${versionSuggest.title}》(相似度 ${(versionSuggest.similarity * 100).toFixed(0)}%)`
+            : ""
+        }
+        size="sm"
+        footer={
+          <>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setVersionSuggest(null);
+                versionResolve.current?.(false);
+              }}
+            >
+              作为全新文件
+            </Button>
+            <Button
+              variant="primary"
+              onClick={() => {
+                setVersionSuggest(null);
+                versionResolve.current?.(true);
+              }}
+            >
+              作为新版本
+            </Button>
+          </>
+        }
+      >
+        <p className="text-sm text-body">作为新版本会关联到该文件,保留版本链;全新文件则独立建立。</p>
+      </Modal>
     </AppShell>
   );
 }

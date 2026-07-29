@@ -5,6 +5,32 @@
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-07-29
+
+本版聚焦:按 Vercel 设计语言全量重构前端 UX,从早期 Tailwind 模板升级到专业系统级体验。
+
+### ✨ 新功能
+
+- **浅色 / 深色双主题**:CSS 变量 token 体系 + 自建 ThemeProvider(`useEffect` 后置切换,避免 SSR hydration 警告),默认浅色(Vercel 原生),侧边栏 Sun/Moon 切换并持久化到 localStorage
+- **统一 Modal + Toast 原语**:替换全部 `window.confirm` / `window.prompt` / 内联 msg 文本——文件删除、版本切换、模型删除走统一确认弹窗;模型新建从 3 连 `prompt` 改为表单模态;操作反馈统一走 Toast
+- **分组导航 IA**:侧边栏按 资源 / 整理 / 系统 三组组织,caption-mono 小标题分隔,选中态左侧 ink indicator bar
+- **mesh 渐变作品牌符号**:首页 hero 与登录页背景使用 Vercel 四对渐变(青/蓝/紫红/珊瑚/琥珀),仅 hero 规模使用
+
+### ♻️ 重构
+
+- **设计 token 化**:Tailwind 颜色全部引用 CSS 变量(`rgb(var(--token))`),支持 `<alpha-value>` 透明度与主题切换;建立 canvas / surface / ink / hairline / primary / link / semantic 七类语义 token
+- **完整共享原语库**(`src/components/ui/`):Button / Card / Input(含 Select/Textarea/Field)/ Badge / Modal / Toast(Provider + `useToast`)/ EmptyState / DataTable / Tabs / Spinner
+- **字体**:Geist 替代方案 Inter + JetBrains Mono,经 `next/font/google` 自托管
+- **图标**:emoji 全部替换为 `lucide-react` 线条图标
+- **缩略图范式**:幻灯片卡片改为 Vercel `card-marketing`(surface + hairline + 堆叠阴影 + 16:9 不裁切)
+- **状态色统一**:文件/任务状态、搜索命中原因、版本 diff 全部走 Vercel 三档语义色(success/warning/error + soft/deep)
+- 重写全部 11 个页面 + SlideCard + SlideDetailDrawer,核心交互保留(乐观更新 / XHR 上传进度 / 3s 轮询 / 拖拽 / 单页标签管理)
+
+### 🐛 修复
+
+- **SSR hydration 警告**:弃用 next-themes(其 inline script 在 React hydrate 前改写 `<html>` 触发 #418/#423),改自建轻量 ThemeProvider(`useEffect` 后置切换);ToastProvider 的 portal 渲染加 `mounted` gate 延迟到 hydration 后,消除全部页面的 hydration 不匹配
+
+
 ## [0.2.0] - 2026-07-29
 
 本版聚焦:版本管理体系建立 + 单页操作体验补全(收藏、标签)+ 预览质量修复。

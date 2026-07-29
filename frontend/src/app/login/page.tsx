@@ -3,7 +3,10 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
 import { API_BASE } from "@/lib/api";
+import Button from "@/components/ui/Button";
+import { Input, Field } from "@/components/ui/Input";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -35,52 +38,50 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="min-h-screen flex items-center justify-center bg-gradient-to-br from-brand-50 to-brand-100 px-6">
-      <div className="w-full max-w-md bg-white rounded-2xl shadow-xl p-8">
+    <main className="relative min-h-screen flex items-center justify-center bg-canvas-soft overflow-hidden px-6">
+      <div className="absolute inset-0 bg-mesh opacity-80" aria-hidden />
+      <div className="relative w-full max-w-md bg-canvas rounded-lg shadow-e5 p-8">
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-brand-500 text-white text-3xl mb-4">
-            📊
-          </div>
-          <h1 className="text-2xl font-bold text-brand-700">PPT 素材库</h1>
-          <p className="text-sm text-gray-500 mt-1">请登录以继续</p>
+          <div className="inline-flex items-center justify-center w-12 h-12 rounded-md bg-mesh border border-hairline mb-4" />
+          <h1 className="text-2xl font-semibold text-ink tracking-tight tracking-display2">PPT 素材库</h1>
+          <p className="text-sm text-body mt-1">请登录以继续</p>
         </div>
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">用户名</label>
-            <input
+          <Field label="用户名" htmlFor="username">
+            <Input
+              id="username"
               type="text"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-400 focus:border-brand-400 outline-none"
+              inputSize="lg"
               required
             />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">密码</label>
-            <input
+          </Field>
+          <Field label="密码" htmlFor="password">
+            <Input
+              id="password"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-400 focus:border-brand-400 outline-none"
+              inputSize="lg"
               required
             />
-          </div>
+          </Field>
           {error && (
-            <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+            <div className="text-sm text-error-deep bg-error-soft border border-error/20 rounded-sm px-3 py-2">
               {error}
             </div>
           )}
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full py-2.5 bg-brand-500 text-white rounded-lg hover:bg-brand-600 disabled:opacity-50 transition font-medium"
-          >
+          <Button type="submit" variant="primary" size="lg" block loading={loading}>
             {loading ? "登录中..." : "登录"}
-          </button>
+          </Button>
         </form>
         <div className="mt-6 text-center">
-          <Link href="/" className="text-sm text-brand-600 hover:underline">
-            ← 返回首页
+          <Link
+            href="/"
+            className="text-sm text-link hover:underline inline-flex items-center gap-1"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" /> 返回首页
           </Link>
         </div>
       </div>

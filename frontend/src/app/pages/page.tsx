@@ -1,10 +1,16 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Images, Tag as TagIcon, Star } from "lucide-react";
 import AppShell from "@/components/AppShell";
 import SlideCard, { type SlideCardData } from "@/components/SlideCard";
 import SlideDetailDrawer from "@/components/SlideDetailDrawer";
 import { api, ApiError } from "@/lib/api";
+import { cn } from "@/lib/cn";
+import Button from "@/components/ui/Button";
+import { Select } from "@/components/ui/Input";
+import EmptyState from "@/components/ui/EmptyState";
+import { useToast } from "@/components/ui/Toast";
 
 interface Tag {
   id: string;
@@ -13,12 +19,11 @@ interface Tag {
 }
 
 export default function PagesPage() {
+  const toast = useToast();
   const [slides, setSlides] = useState<SlideCardData[]>([]);
   const [loading, setLoading] = useState(true);
-  const [msg, setMsg] = useState("");
   const [active, setActive] = useState<SlideCardData | null>(null);
 
-  // 批量选择(SL-03)
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [tags, setTags] = useState<Tag[]>([]);
@@ -28,7 +33,7 @@ export default function PagesPage() {
     try {
       setSlides(await api.get<SlideCardData[]>(`/api/pages`));
     } catch (e) {
-      setMsg(e instanceof ApiError ? e.message : "加载失败");
+      toast.error(e instanceof ApiError ? e.message : "加载失败");
     } finally {
       setLoading(false);
     }
@@ -36,6 +41,7 @@ export default function PagesPage() {
   useEffect(() => {
     load();
     api.get<Tag[]>(`/api/tags`).then(setTags).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function toggleSelect(id: string) {
@@ -49,19 +55,16 @@ export default function PagesPage() {
 
   async function batchAddTag() {
     if (!batchTagId || selected.size === 0) {
-      setMsg("请选择标签和至少一个页面");
+      toast.error("请选择标签和至少一个页面");
       return;
     }
     try {
-      await api.post(`/api/slides/batch-tags`, {
-        slide_ids: [...selected],
-        tag_id: batchTagId,
-      });
-      setMsg(`已为 ${selected.size} 个页面添加标签`);
+      await api.post(`/api/slides/batch-tags`, { slide_ids: [...selected], tag_id: batchTagId });
+      toast.success(`已为 ${selected.size} 个页面添加标签`);
       setSelected(new Set());
       setSelectMode(false);
     } catch (e) {
-      setMsg(e instanceof ApiError ? e.message : "操作失败");
+      toast.error(e instanceof ApiError ? e.message : "操作失败");
     }
   }
 
@@ -69,32 +72,30 @@ export default function PagesPage() {
     if (selected.size === 0) return;
     try {
       await api.post(`/api/favorites`, { slide_ids: [...selected] });
-      setMsg(`已收藏 ${selected.size} 个页面`);
+      toast.success(`已收藏 ${selected.size} 个页面`);
       const sel = selected;
       setSlides((prev) => prev.map((s) => (sel.has(s.id) ? { ...s, is_favorite: true } : s)));
       setSelected(new Set());
       setSelectMode(false);
     } catch (e) {
-      setMsg(e instanceof ApiError ? e.message : "操作失败");
+      toast.error(e instanceof ApiError ? e.message : "操作失败");
     }
   }
 
-  // 单页收藏切换(卡片星标 / 抽屉按钮)
   async function toggleFavorite(slide: SlideCardData) {
     const target = !slide.is_favorite;
     setSlides((prev) => prev.map((s) => (s.id === slide.id ? { ...s, is_favorite: target } : s)));
     try {
       if (target) {
         await api.post(`/api/favorites`, { slide_ids: [slide.id] });
-        setMsg("已收藏");
+        toast.success("已收藏");
       } else {
         await api.delete(`/api/favorites/${slide.id}`);
-        setMsg("已取消收藏");
+        toast.success("已取消收藏");
       }
     } catch (e) {
-      // 回滚
       setSlides((prev) => prev.map((s) => (s.id === slide.id ? { ...s, is_favorite: !target } : s)));
-      setMsg(e instanceof ApiError ? e.message : "操作失败");
+      toast.error(e instanceof ApiError ? e.message : "操作失败");
     }
   }
 
@@ -105,11 +106,9 @@ export default function PagesPage() {
   return (
     <AppShell title="页面浏览">
       <div className="space-y-4">
-        {msg && <div className="text-sm text-brand-600 bg-brand-50 px-3 py-2 rounded">{msg}</div>}
-
-        {/* 批量操作工具栏 */}
-        <div className="bg-white rounded-xl border border-gray-200 p-4 flex items-center gap-3 flex-wrap">
-          <label className="flex items-center gap-2 text-sm text-gray-600">
+        {/* Batch toolbar */}
+        <div className="bg-surface rounded-md shadow-e2 p-4 flex items-center gap-3 flex-wrap">
+          <label className="flex items-center gap-2 text-sm text-body cursor-pointer select-none">
             <input
               type="checkbox"
               checked={selectMode}
@@ -117,44 +116,35 @@ export default function PagesPage() {
                 setSelectMode(e.target.checked);
                 setSelected(new Set());
               }}
+              className="accent-[rgb(var(--primary))]"
             />
             批量选择模式
           </label>
           {selectMode && (
             <>
-              <span className="text-sm text-gray-500">已选 {selected.size} 个</span>
-              <select value={batchTagId} onChange={(e) => setBatchTagId(e.target.value)} className="border border-gray-300 rounded px-2 py-1 text-sm">
+              <span className="text-sm text-mute">已选 {selected.size} 个</span>
+              <Select inputSize="sm" value={batchTagId} onChange={(e) => setBatchTagId(e.target.value)} className="w-40">
                 <option value="">选择标签…</option>
                 {tags.map((t) => (
                   <option key={t.id} value={t.id}>
                     {t.name}
                   </option>
                 ))}
-              </select>
-              <button
-                onClick={batchAddTag}
-                disabled={selected.size === 0 || !batchTagId}
-                className="px-3 py-1 text-sm bg-brand-500 text-white rounded disabled:opacity-50"
-              >
+              </Select>
+              <Button size="sm" variant="secondary" leadingIcon={<TagIcon className="w-3.5 h-3.5" />} onClick={batchAddTag} disabled={selected.size === 0 || !batchTagId}>
                 批量加标签
-              </button>
-              <button
-                onClick={batchFavorite}
-                disabled={selected.size === 0}
-                className="px-3 py-1 text-sm border border-yellow-300 text-yellow-600 rounded disabled:opacity-50"
-              >
+              </Button>
+              <Button size="sm" variant="secondary" leadingIcon={<Star className="w-3.5 h-3.5" />} onClick={batchFavorite} disabled={selected.size === 0}>
                 批量收藏
-              </button>
+              </Button>
             </>
           )}
         </div>
 
         {loading ? (
-          <div className="text-gray-400">加载中...</div>
+          <div className="text-mute text-sm">加载中...</div>
         ) : slides.length === 0 ? (
-          <div className="bg-white rounded-xl border border-dashed border-gray-300 p-12 text-center text-gray-400">
-            暂无页面
-          </div>
+          <EmptyState icon={<Images className="w-5 h-5" />} title="暂无页面" description="上传 PPTX 后,解析出的页面会出现在这里。" />
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
             {slides.map((s) => (
@@ -164,12 +154,15 @@ export default function PagesPage() {
                     type="checkbox"
                     checked={selected.has(s.id)}
                     onChange={() => toggleSelect(s.id)}
-                    className="absolute top-2 right-2 z-10 w-5 h-5"
+                    className={cn(
+                      "absolute top-2 right-2 z-20 w-5 h-5 accent-[rgb(var(--primary))] bg-canvas border border-hairline-strong rounded",
+                    )}
                   />
                 )}
-                <div className={selected.has(s.id) ? "ring-2 ring-brand-400 rounded-xl" : ""}>
+                <div className={cn(selected.has(s.id) && "outline outline-1 outline-primary rounded-md")}>
                   <SlideCard
                     slide={s}
+                    selected={selected.has(s.id)}
                     onOpen={selectMode ? undefined : setActive}
                     onToggleFavorite={selectMode ? undefined : toggleFavorite}
                   />
@@ -180,7 +173,7 @@ export default function PagesPage() {
         )}
       </div>
 
-      <SlideDetailDrawer slide={active} onClose={() => setActive(null)} onMsg={setMsg} onToggleFavorite={onDrawerToggleFav} />
+      <SlideDetailDrawer slide={active} onClose={() => setActive(null)} onToggleFavorite={onDrawerToggleFav} />
     </AppShell>
   );
 }

@@ -59,6 +59,37 @@ export const CHANGELOG: ChangelogEntry[] = [
     sections: [],
   },
   {
+    version: "0.3.0",
+    date: "2026-07-29",
+    sections: [
+      {
+        kind: "✨ 新功能",
+        items: [
+          "浅色 / 深色双主题:CSS 变量 token 体系 + 自建 ThemeProvider(useEffect 后置切换,避免 SSR hydration 警告),默认浅色,侧边栏 Sun/Moon 切换并持久化",
+          "统一 Modal + Toast 原语:替换全部 confirm/prompt/内联 msg;模型新建从 3 连 prompt 改为表单模态",
+          "分组导航 IA:资源 / 整理 / 系统三组,caption-mono 小标题分隔,选中态 ink indicator bar",
+          "mesh 渐变作品牌符号:首页 hero 与登录页背景使用 Vercel 四对渐变,仅 hero 规模",
+        ],
+      },
+      {
+        kind: "♻️ 重构",
+        items: [
+          "设计 token 化:Tailwind 颜色全部引用 CSS 变量,支持透明度与主题切换",
+          "完整共享原语库(Button/Card/Input/Badge/Modal/Toast/EmptyState/DataTable/Tabs/Spinner)",
+          "字体 Geist 替代 Inter + JetBrains Mono(next/font 自托管);emoji 全部替换为 lucide-react 线条图标",
+          "缩略图改 Vercel card-marketing 范式;状态色统一走 Vercel 三档语义色",
+          "重写全部 11 个页面 + SlideCard + SlideDetailDrawer",
+        ],
+      },
+      {
+        kind: "🐛 修复",
+        items: [
+          "SSR hydration 警告:弃用 next-themes,改自建轻量 ThemeProvider(useEffect 后置切换);ToastProvider portal 加 mounted gate 延迟到 hydration 后",
+        ],
+      },
+    ],
+  },
+  {
     version: "0.2.0",
     date: "2026-07-29",
     sections: [

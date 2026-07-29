@@ -1,28 +1,31 @@
 import Link from "next/link";
+import { ArrowRight } from "lucide-react";
+import Button from "@/components/ui/Button";
 
 export default function Home() {
   return (
-    <main className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-brand-50 to-brand-100 px-6">
-      <div className="max-w-2xl text-center">
-        <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-brand-500 text-white text-4xl mb-6 shadow-lg">
-          📊
-        </div>
-        <h1 className="text-4xl font-bold text-brand-700 mb-4">PPT 素材库</h1>
-        <p className="text-lg text-gray-600 mb-8">
-          面向 PPT 页级素材检索、理解、管理与复用的 BS 架构平台
+    <main className="relative min-h-screen flex flex-col items-center justify-center bg-canvas-soft overflow-hidden px-6">
+      <div className="absolute inset-0 bg-mesh opacity-90" aria-hidden />
+      <div className="relative max-w-2xl text-center">
+        <span className="inline-block text-[12px] font-mono uppercase tracking-wider text-body bg-canvas/80 backdrop-blur border border-hairline rounded-pill px-3 py-1 mb-6">
+          PPT 页级素材库
+        </span>
+        <h1 className="text-[44px] leading-[1.05] font-semibold tracking-tight tracking-display1 text-ink mb-4">
+          检索、理解、管理与复用每一页幻灯片。
+        </h1>
+        <p className="text-lg text-body mb-8 leading-relaxed">
+          面向 PPT 页级素材检索、理解、管理与复用的 BS 架构平台。
         </p>
-        <div className="flex gap-4 justify-center">
-          <Link
-            href="/login"
-            className="px-6 py-3 bg-brand-500 text-white rounded-lg hover:bg-brand-600 transition shadow"
-          >
-            登录
+        <div className="flex gap-3 justify-center">
+          <Link href="/login">
+            <Button variant="primary" size="lg" leadingIcon={<ArrowRight className="w-4 h-4" />}>
+              开始使用
+            </Button>
           </Link>
-          <Link
-            href="/files"
-            className="px-6 py-3 bg-white text-brand-600 border border-brand-200 rounded-lg hover:bg-brand-50 transition"
-          >
-            进入工作台
+          <Link href="/files">
+            <Button variant="secondary" size="lg">
+              进入工作台
+            </Button>
           </Link>
         </div>
       </div>

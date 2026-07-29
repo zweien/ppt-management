@@ -1,24 +1,46 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Trash2, RotateCcw } from "lucide-react";
 import AppShell from "@/components/AppShell";
 import { api, ApiError } from "@/lib/api";
+import Button from "@/components/ui/Button";
+import EmptyState from "@/components/ui/EmptyState";
+import { Table, THead, TH, TBody, TR, TD } from "@/components/ui/DataTable";
+import { useToast } from "@/components/ui/Toast";
 
-interface Presentation { id: string; title: string; page_count: number; created_at: string; deleted_at: string; }
+interface Presentation {
+  id: string;
+  title: string;
+  page_count: number;
+  created_at: string;
+  deleted_at: string;
+}
 
 export default function TrashPage() {
+  const toast = useToast();
   const [items, setItems] = useState<Presentation[]>([]);
-  const [msg, setMsg] = useState("");
 
   async function load() {
-    try { setItems(await api.get<Presentation[]>(`/api/presentations?include_deleted=true`)); }
-    catch (e) { setMsg(e instanceof ApiError ? e.message : "加载失败"); }
+    try {
+      setItems(await api.get<Presentation[]>(`/api/presentations?include_deleted=true`));
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.message : "加载失败");
+    }
   }
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function restore(id: string) {
-    try { await api.post(`/api/presentations/${id}/restore`); await load(); }
-    catch (e) { setMsg(e instanceof ApiError ? e.message : "恢复失败"); }
+    try {
+      await api.post(`/api/presentations/${id}/restore`);
+      toast.success("已恢复");
+      await load();
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.message : "恢复失败");
+    }
   }
 
   const deleted = items.filter((p) => p.deleted_at);
@@ -26,33 +48,32 @@ export default function TrashPage() {
   return (
     <AppShell title="回收站">
       <div className="space-y-4">
-        {msg && <div className="text-sm text-red-600">{msg}</div>}
-        <p className="text-xs text-gray-400">软删除的文件在此可恢复。索引立即不可见,对象延迟清理。</p>
+        <p className="text-xs text-mute">软删除的文件在此可恢复。索引立即不可见,对象延迟清理。</p>
         {deleted.length === 0 ? (
-          <div className="bg-white rounded-xl border border-dashed border-gray-300 p-12 text-center text-gray-400">回收站为空</div>
+          <EmptyState icon={<Trash2 className="w-5 h-5" />} title="回收站为空" description="删除的文件会暂存在这里,可以随时恢复。" />
         ) : (
-          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 text-gray-500 text-xs uppercase"><tr>
-                <th className="text-left px-4 py-3">文件名</th>
-                <th className="text-left px-4 py-3">页数</th>
-                <th className="text-left px-4 py-3">删除时间</th>
-                <th className="text-right px-4 py-3">操作</th>
-              </tr></thead>
-              <tbody className="divide-y divide-gray-100">
-                {deleted.map((p) => (
-                  <tr key={p.id}>
-                    <td className="px-4 py-3 text-gray-500">{p.title}</td>
-                    <td className="px-4 py-3 text-gray-500">{p.page_count}</td>
-                    <td className="px-4 py-3 text-gray-400 text-xs">{new Date(p.deleted_at).toLocaleString("zh-CN")}</td>
-                    <td className="px-4 py-3 text-right">
-                      <button onClick={() => restore(p.id)} className="text-brand-600 hover:underline text-xs">恢复</button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <Table>
+            <THead>
+              <TH>文件名</TH>
+              <TH>页数</TH>
+              <TH>删除时间</TH>
+              <TH className="text-right">操作</TH>
+            </THead>
+            <TBody>
+              {deleted.map((p) => (
+                <TR key={p.id}>
+                  <TD className="text-mute">{p.title}</TD>
+                  <TD className="text-mute">{p.page_count}</TD>
+                  <TD className="text-mute text-xs">{new Date(p.deleted_at).toLocaleString("zh-CN")}</TD>
+                  <TD className="text-right">
+                    <Button size="sm" variant="secondary" leadingIcon={<RotateCcw className="w-3.5 h-3.5" />} onClick={() => restore(p.id)}>
+                      恢复
+                    </Button>
+                  </TD>
+                </TR>
+              ))}
+            </TBody>
+          </Table>
         )}
       </div>
     </AppShell>

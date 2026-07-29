@@ -1,51 +1,65 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Star } from "lucide-react";
 import AppShell from "@/components/AppShell";
+import SlideCard, { type SlideCardData } from "@/components/SlideCard";
+import SlideDetailDrawer from "@/components/SlideDetailDrawer";
 import { api, ApiError } from "@/lib/api";
+import EmptyState from "@/components/ui/EmptyState";
+import { useToast } from "@/components/ui/Toast";
 
-interface Fav { id: string; page_no: number; title: string | null; thumbnail_url: string | null; }
+interface Fav extends SlideCardData {}
 
 export default function FavoritesPage() {
+  const toast = useToast();
   const [items, setItems] = useState<Fav[]>([]);
-  const [msg, setMsg] = useState("");
+  const [active, setActive] = useState<Fav | null>(null);
 
   async function load() {
-    try { setItems(await api.get<Fav[]>(`/api/favorites`)); }
-    catch (e) { setMsg(e instanceof ApiError ? e.message : "加载失败"); }
+    try {
+      setItems(await api.get<Fav[]>(`/api/favorites`));
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.message : "加载失败");
+    }
   }
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  async function remove(id: string) {
-    try { await api.delete(`/api/favorites/${id}`); await load(); }
-    catch (e) { setMsg(e instanceof ApiError ? e.message : "操作失败"); }
+  async function toggleFavorite(slide: SlideCardData) {
+    // From favorites page, un-favorite removes it from the list.
+    setItems((prev) => prev.filter((s) => s.id !== slide.id));
+    try {
+      await api.delete(`/api/favorites/${slide.id}`);
+      toast.success("已取消收藏");
+    } catch (e) {
+      // Restore on failure.
+      setItems((prev) => (prev.find((s) => s.id === slide.id) ? prev : [...prev, slide as Fav]));
+      toast.error(e instanceof ApiError ? e.message : "操作失败");
+    }
+  }
+
+  function onDrawerToggleFav(slideId: string, isFav: boolean) {
+    if (!isFav) {
+      setItems((prev) => prev.filter((s) => s.id !== slideId));
+    }
   }
 
   return (
     <AppShell title="我的收藏">
-      <div className="space-y-4">
-        {msg && <div className="text-sm text-red-600">{msg}</div>}
-        {items.length === 0 ? (
-          <div className="bg-white rounded-xl border border-dashed border-gray-300 p-12 text-center text-gray-400">暂无收藏</div>
-        ) : (
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-            {items.map((s) => (
-              <div key={s.id} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-                <div className="aspect-video bg-gray-100 overflow-hidden">
-                  {s.thumbnail_url ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={s.thumbnail_url} alt={`第${s.page_no}页`} className="w-full h-full object-contain" />
-                  ) : <div className="w-full h-full flex items-center justify-center text-gray-300 text-sm">无预览</div>}
-                </div>
-                <div className="p-3 flex items-center justify-between">
-                  <span className="text-sm text-gray-700 truncate">P{s.page_no} {s.title || ""}</span>
-                  <button onClick={() => remove(s.id)} className="text-yellow-500 hover:text-yellow-600 text-sm">★</button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+      {items.length === 0 ? (
+        <EmptyState icon={<Star className="w-5 h-5" />} title="暂无收藏" description="在页面浏览或搜索结果中点击星标即可收藏。" />
+      ) : (
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+          {items.map((s) => (
+            <SlideCard key={s.id} slide={s} onOpen={setActive} onToggleFavorite={toggleFavorite} />
+          ))}
+        </div>
+      )}
+
+      <SlideDetailDrawer slide={active} onClose={() => setActive(null)} onToggleFavorite={onDrawerToggleFav} />
     </AppShell>
   );
 }

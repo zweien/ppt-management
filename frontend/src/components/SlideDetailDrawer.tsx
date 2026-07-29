@@ -2,8 +2,13 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { api, ApiError, API_BASE } from "@/lib/api";
+import { Star, X, Download, Copy, FileDown, Pencil, Check } from "lucide-react";
+import { api, ApiError } from "@/lib/api";
+import { cn } from "@/lib/cn";
 import type { SlideCardData } from "./SlideCard";
+import Button from "./ui/Button";
+import { Tabs } from "./ui/Tabs";
+import { useToast } from "./ui/Toast";
 
 interface SlideDetail {
   id: string;
@@ -28,10 +33,11 @@ interface SlideTagRow {
   origin: string;
 }
 
+type TabKey = "basic" | "text" | "mineru" | "tags" | "file";
+
 export default function SlideDetailDrawer({
   slide,
   onClose,
-  onMsg,
   onToggleFavorite,
 }: {
   slide: SlideCardData | null;
@@ -39,15 +45,15 @@ export default function SlideDetailDrawer({
   onMsg?: (m: string) => void;
   onToggleFavorite?: (slideId: string, isFav: boolean) => void;
 }) {
+  const toast = useToast();
   const [detail, setDetail] = useState<SlideDetail | null>(null);
   const [slideTags, setSlideTags] = useState<SlideTagRow[]>([]);
   const [allTags, setAllTags] = useState<{ id: string; name: string; category: string | null }[]>([]);
   const [addTagId, setAddTagId] = useState("");
   const [tagBusy, setTagBusy] = useState(false);
-  const [tab, setTab] = useState<"basic" | "text" | "mineru" | "tags" | "file">("basic");
+  const [tab, setTab] = useState<TabKey>("basic");
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
-  const [exportMsg, setExportMsg] = useState("");
   const [noteDraft, setNoteDraft] = useState("");
   const [savingNote, setSavingNote] = useState(false);
   const [noteEditing, setNoteEditing] = useState(false);
@@ -80,7 +86,7 @@ export default function SlideDetailDrawer({
           setFav(!!d.is_favorite);
         }
       } catch (e) {
-        if (!cancelled) onMsg?.(e instanceof ApiError ? e.message : "加载详情失败");
+        if (!cancelled) toast.error(e instanceof ApiError ? e.message : "加载详情失败");
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -88,13 +94,21 @@ export default function SlideDetailDrawer({
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slide]);
+
+  useEffect(() => {
+    if (!slide) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [slide, onClose]);
 
   if (!slide) return null;
 
   async function downloadPng(d: SlideDetail | null) {
     if (!d?.preview_url) {
-      onMsg?.("无预览图");
+      toast.info("无预览图");
       return;
     }
     const a = document.createElement("a");
@@ -108,29 +122,30 @@ export default function SlideDetailDrawer({
     const text = [d.title, d.native_text, d.notes_text].filter(Boolean).join("\n");
     try {
       await navigator.clipboard.writeText(text);
-      onMsg?.("已复制页面文字");
+      toast.success("已复制页面文字");
     } catch {
-      onMsg?.("复制失败");
+      toast.error("复制失败");
     }
   }
 
   async function exportSingleSlide() {
     if (!slide) return;
     setExporting(true);
-    setExportMsg("");
     try {
-      const r = await api.post<{ status: string; download_url: string }>(`/api/slides/${slide.id}/exports/pptx`);
+      const r = await api.post<{ status: string; download_url: string }>(
+        `/api/slides/${slide.id}/exports/pptx`,
+      );
       if (r.download_url) {
         const a = document.createElement("a");
         a.href = r.download_url;
         a.download = `slide-${slide.page_no}.pptx`;
         a.click();
-        setExportMsg("已导出单页 PPTX");
+        toast.success("已导出单页 PPTX");
       } else {
-        setExportMsg("导出失败");
+        toast.error("导出失败");
       }
     } catch (e) {
-      setExportMsg(e instanceof ApiError ? e.message : "导出失败");
+      toast.error(e instanceof ApiError ? e.message : "导出失败");
     } finally {
       setExporting(false);
     }
@@ -143,9 +158,9 @@ export default function SlideDetailDrawer({
       await api.patch(`/api/slides/${slide.id}`, { user_note: noteDraft });
       setDetail((d) => (d ? { ...d, user_note: noteDraft } : d));
       setNoteEditing(false);
-      onMsg?.("备注已保存");
+      toast.success("备注已保存");
     } catch (e) {
-      onMsg?.(e instanceof ApiError ? e.message : "保存失败");
+      toast.error(e instanceof ApiError ? e.message : "保存失败");
     } finally {
       setSavingNote(false);
     }
@@ -158,204 +173,224 @@ export default function SlideDetailDrawer({
     try {
       if (target) {
         await api.post("/api/favorites", { slide_ids: [slide.id] });
-        onMsg?.("已收藏");
+        toast.success("已收藏");
       } else {
         await api.delete(`/api/favorites/${slide.id}`);
-        onMsg?.("已取消收藏");
+        toast.success("已取消收藏");
       }
       setFav(target);
       setDetail((d) => (d ? { ...d, is_favorite: target } : d));
       onToggleFavorite?.(slide.id, target);
     } catch (e) {
-      onMsg?.(e instanceof ApiError ? e.message : "操作失败");
+      toast.error(e instanceof ApiError ? e.message : "操作失败");
     } finally {
       setTogglingFav(false);
     }
   }
 
-  // 给当前页加标签(乐观更新,失败回滚)
   async function addTag() {
     if (!slide || !addTagId) return;
     const tag = allTags.find((t) => t.id === addTagId);
     if (!tag) return;
     const tagId = addTagId;
-    // 已存在则不重复加
     if (slideTags.some((st) => st.tag.name === tag.name)) {
       setAddTagId("");
       return;
     }
     const prev = slideTags;
-    const newRow: SlideTagRow = { id: `tmp-${tagId}`, tag: { name: tag.name, category: tag.category }, origin: "manual" };
+    const newRow: SlideTagRow = {
+      id: `tmp-${tagId}`,
+      tag: { name: tag.name, category: tag.category },
+      origin: "manual",
+    };
     setSlideTags((p) => [...p, newRow]);
     setAddTagId("");
     setTagBusy(true);
     try {
       await api.post(`/api/slides/${slide.id}/tags/${tagId}`);
-      // 重新拉取以拿到真实 id(origin 可能因幂等不变)
       const fresh = await api.get<SlideTagRow[]>(`/api/slides/${slide.id}/tags`);
       setSlideTags(fresh);
     } catch (e) {
-      setSlideTags(prev); // 回滚
-      onMsg?.(e instanceof ApiError ? e.message : "添加标签失败");
+      setSlideTags(prev);
+      toast.error(e instanceof ApiError ? e.message : "添加标签失败");
     } finally {
       setTagBusy(false);
     }
   }
 
-  // 移除当前页的某标签(乐观更新,失败回滚)
   async function removeTag(row: SlideTagRow) {
     if (!slide) return;
     const prev = slideTags;
     setSlideTags((p) => p.filter((st) => st.id !== row.id));
     try {
-      // 用真实 tag id(row.id 是 slide_tag 关联 id,需要 tag id)。从 allTags 反查
       const tagId = allTags.find((t) => t.name === row.tag.name)?.id;
       if (!tagId) throw new Error("标签不存在");
       await api.delete(`/api/slides/${slide.id}/tags/${tagId}`);
     } catch (e) {
-      setSlideTags(prev); // 回滚
-      onMsg?.(e instanceof ApiError ? e.message : "移除标签失败");
+      setSlideTags(prev);
+      toast.error(e instanceof ApiError ? e.message : "移除标签失败");
     }
   }
 
   return (
     <div className="fixed inset-0 z-40 flex justify-end">
-      <div className="absolute inset-0 bg-black/30" onClick={onClose} />
-      <div className="relative w-full max-w-2xl bg-white shadow-2xl overflow-auto h-full">
-        <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between z-10">
-          <div>
-            <div className="text-xs text-gray-400">
+      <div className="absolute inset-0 bg-black/40 animate-fade-in" onClick={onClose} />
+      <div className="relative w-full max-w-2xl bg-canvas-soft shadow-e5 overflow-auto h-full animate-slide-in-right">
+        {/* Header */}
+        <div className="sticky top-0 z-10 bg-canvas border-b border-hairline px-6 h-16 flex items-center justify-between">
+          <div className="min-w-0">
+            <div className="text-xs font-mono text-mute truncate">
               {slide.presentation_title || detail?.presentation_title || "-"} · 第 {slide.page_no} 页
             </div>
-            <div className="font-medium text-gray-800">{slide.title || detail?.title || "(无标题)"}</div>
+            <div className="font-medium text-ink truncate">{slide.title || detail?.title || "(无标题)"}</div>
           </div>
-          <div className="flex items-center gap-2">
-            <button
+          <div className="flex items-center gap-2 shrink-0">
+            <Button
+              variant={fav ? "primary" : "secondary"}
+              size="sm"
               onClick={toggleFavorite}
-              disabled={togglingFav}
-              title={fav ? "取消收藏" : "收藏"}
-              className={`px-2.5 py-1 rounded-lg text-sm border transition disabled:opacity-50 ${
-                fav
-                  ? "bg-yellow-400 text-white border-yellow-400 hover:bg-yellow-500"
-                  : "border-gray-200 text-gray-500 hover:border-yellow-300 hover:text-yellow-600"
-              }`}
+              loading={togglingFav}
+              leadingIcon={<Star className="w-3.5 h-3.5" fill={fav ? "currentColor" : "none"} />}
             >
-              {fav ? "★ 已收藏" : "☆ 收藏"}
+              {fav ? "已收藏" : "收藏"}
+            </Button>
+            <button
+              onClick={onClose}
+              aria-label="关闭"
+              className="text-mute hover:text-ink p-1.5 rounded-md hover:bg-canvas-soft-2"
+            >
+              <X className="w-4 h-4" />
             </button>
-            <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl">✕</button>
           </div>
         </div>
 
-        <div className="p-6 space-y-4">
+        <div className="p-6 space-y-5">
           {loading ? (
-            <div className="text-gray-400 text-sm">加载详情...</div>
+            <div className="text-mute text-sm">加载详情...</div>
           ) : (
             <>
-              <div className="bg-gray-50 rounded-lg overflow-hidden">
+              {/* Preview */}
+              <div className="rounded-md overflow-hidden border border-hairline bg-canvas-soft-2">
                 {detail?.preview_url ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={detail.preview_url} alt="高清预览" className="w-full" />
                 ) : (
-                  <div className="aspect-video flex items-center justify-center text-gray-300">无高清预览</div>
+                  <div className="aspect-video flex items-center justify-center text-mute font-mono text-sm">
+                    无高清预览
+                  </div>
                 )}
               </div>
 
+              {/* Actions */}
               <div className="flex gap-2 flex-wrap items-center">
-                <button onClick={() => downloadPng(detail)} className="px-3 py-1.5 text-sm bg-brand-500 text-white rounded-lg hover:bg-brand-600">
+                <Button size="sm" variant="secondary" leadingIcon={<Download className="w-3.5 h-3.5" />} onClick={() => downloadPng(detail)}>
                   下载图片
-                </button>
-                <button onClick={() => copyText(detail)} className="px-3 py-1.5 text-sm border border-brand-200 text-brand-600 rounded-lg hover:bg-brand-50">
+                </Button>
+                <Button size="sm" variant="secondary" leadingIcon={<Copy className="w-3.5 h-3.5" />} onClick={() => copyText(detail)}>
                   复制文字
-                </button>
-                <button
-                  onClick={() => exportSingleSlide()}
-                  disabled={exporting}
-                  className="px-3 py-1.5 text-sm border border-brand-200 text-brand-600 rounded-lg hover:bg-brand-50 disabled:opacity-50"
+                </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  leadingIcon={<FileDown className="w-3.5 h-3.5" />}
+                  onClick={exportSingleSlide}
+                  loading={exporting}
                   title="复制源 PPTX 目标页及依赖,生成仅含该页的可编辑 PPTX"
                 >
-                  {exporting ? "导出中..." : "导出单页 PPTX"}
-                </button>
-                {exportMsg && <span className="text-xs text-gray-500">{exportMsg}</span>}
+                  导出单页 PPTX
+                </Button>
               </div>
 
-              <div className="border-b border-gray-200 flex gap-1 overflow-x-auto">
-                {([["basic", "基本信息"], ["text", "原始文字"], ["mineru", "MinerU"], ["tags", "标签"], ["file", "所在文件"]] as const).map(
-                  ([k, label]) => (
-                    <button
-                      key={k}
-                      onClick={() => setTab(k)}
-                      className={`px-4 py-2 text-sm border-b-2 -mb-px whitespace-nowrap ${
-                        tab === k ? "border-brand-500 text-brand-600 font-medium" : "border-transparent text-gray-500"
-                      }`}
-                    >
-                      {label}
-                    </button>
-                  )
-                )}
-              </div>
+              {/* Tabs */}
+              <Tabs<TabKey>
+                value={tab}
+                onChange={setTab}
+                items={[
+                  { key: "basic", label: "基本信息" },
+                  { key: "text", label: "原始文字" },
+                  { key: "mineru", label: "MinerU" },
+                  { key: "tags", label: "标签" },
+                  { key: "file", label: "所在文件" },
+                ]}
+              />
 
+              {/* Basic */}
               {tab === "basic" && (
-                <div className="text-sm text-gray-600 space-y-2">
-                  <div><span className="text-gray-400">页码:</span> 第 {slide.page_no} 页</div>
-                  <div><span className="text-gray-400">标题:</span> {detail?.title || "-"}</div>
-                  <div><span className="text-gray-400">人工摘要:</span> {detail?.manual_summary || "(待填写)"}</div>
-                  <div>
-                    <span className="text-gray-400">AI 摘要:</span>{" "}
+                <div className="text-sm space-y-2.5">
+                  <Row label="页码">第 {slide.page_no} 页</Row>
+                  <Row label="标题">{detail?.title || "-"}</Row>
+                  <Row label="人工摘要">{detail?.manual_summary || "(待填写)"}</Row>
+                  <Row label="AI 摘要">
                     {detail?.ai_summary ? (
-                      <span className="text-gray-700">{detail.ai_summary}</span>
+                      <span className="text-ink">{detail.ai_summary}</span>
                     ) : (
-                      <span className="text-gray-300">(未生成)</span>
+                      <span className="text-mute">(未生成)</span>
                     )}
-                  </div>
-                  <div>
-                    <span className="text-gray-400">备注:</span>{" "}
+                  </Row>
+                  <div className="flex gap-2">
+                    <span className="w-20 shrink-0 text-mute">备注</span>
                     {noteEditing ? (
-                      <span className="inline-block">
+                      <span className="inline-flex items-center gap-2 flex-1">
                         <input
                           value={noteDraft}
                           onChange={(e) => setNoteDraft(e.target.value)}
-                          className="border border-gray-300 rounded px-2 py-0.5 text-sm w-48"
+                          className="flex-1 h-8 px-2 text-sm bg-canvas border border-hairline rounded-sm outline-none focus:border-hairline-strong"
                           placeholder="添加你的备注"
                         />
-                        <button onClick={saveNote} disabled={savingNote} className="ml-2 text-xs text-brand-600 hover:underline">
-                          {savingNote ? "保存中" : "保存"}
-                        </button>
-                        <button onClick={() => { setNoteEditing(false); setNoteDraft(detail?.user_note || ""); }} className="ml-2 text-xs text-gray-400 hover:underline">
+                        <Button size="sm" variant="primary" onClick={saveNote} loading={savingNote} leadingIcon={<Check className="w-3 h-3" />}>
+                          保存
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => {
+                            setNoteEditing(false);
+                            setNoteDraft(detail?.user_note || "");
+                          }}
+                        >
                           取消
-                        </button>
+                        </Button>
                       </span>
                     ) : (
-                      <span>
-                        {detail?.user_note || "(无)"}{" "}
-                        <button onClick={() => setNoteEditing(true)} className="text-xs text-brand-600 hover:underline ml-1">
-                          编辑
+                      <span className="flex items-center gap-1.5 flex-1">
+                        <span className="text-body">{detail?.user_note || "(无)"}</span>
+                        <button
+                          onClick={() => setNoteEditing(true)}
+                          className="text-link hover:underline inline-flex items-center gap-1 text-xs"
+                        >
+                          <Pencil className="w-3 h-3" /> 编辑
                         </button>
                       </span>
                     )}
                   </div>
-                  <div><span className="text-gray-400">演讲备注:</span> {detail?.notes_text || "-"}</div>
-                  <div>
-                    <span className="text-gray-400">指纹:</span>{" "}
-                    <code className="text-xs">{detail?.fingerprint?.slice(0, 16) || "-"}...</code>
-                  </div>
+                  <Row label="演讲备注">{detail?.notes_text || "-"}</Row>
+                  <Row label="指纹">
+                    <code className="text-xs font-mono text-mute">{detail?.fingerprint?.slice(0, 16) || "-"}...</code>
+                  </Row>
                 </div>
               )}
+
+              {/* Native text */}
               {tab === "text" && (
-                <div className="text-sm text-gray-700 whitespace-pre-wrap font-mono bg-gray-50 p-3 rounded max-h-72 overflow-auto">
+                <div className="text-sm text-ink whitespace-pre-wrap font-mono bg-canvas-soft-2 p-4 rounded-md max-h-72 overflow-auto border border-hairline">
                   {detail?.native_text || "(无原生文字)"}
                 </div>
               )}
+
+              {/* MinerU */}
               {tab === "mineru" && (
-                <div className="text-sm text-gray-700 whitespace-pre-wrap bg-gray-50 p-3 rounded max-h-72 overflow-auto">
+                <div className="text-sm text-ink whitespace-pre-wrap bg-canvas-soft-2 p-4 rounded-md max-h-72 overflow-auto border border-hairline">
                   {detail?.mineru_markdown || "(MinerU 未解析或无内容)"}
                 </div>
               )}
+
+              {/* Tags */}
               {tab === "tags" && (
                 <div className="text-sm space-y-4">
                   <div>
-                    <div className="text-xs text-gray-400 mb-2">已打标签</div>
+                    <div className="text-xs font-mono uppercase tracking-wider text-mute mb-2">已打标签</div>
                     {slideTags.length === 0 ? (
-                      <span className="text-xs text-gray-400">暂无标签,从下方添加</span>
+                      <span className="text-xs text-mute">暂无标签,从下方添加</span>
                     ) : (
                       <div className="flex flex-wrap gap-1.5">
                         {slideTags.map((t) => {
@@ -363,24 +398,25 @@ export default function SlideDetailDrawer({
                           return (
                             <span
                               key={t.id}
-                              className={`group inline-flex items-center gap-1 text-xs px-2 py-0.5 border rounded ${
+                              className={cn(
+                                "group inline-flex items-center gap-1 text-xs px-2 py-1 border rounded-full",
                                 isAi
-                                  ? "bg-purple-50 text-purple-600 border-purple-200"
-                                  : "bg-brand-50 text-brand-600 border-brand-200"
-                              }`}
+                                  ? "bg-violet-soft text-violet border-transparent"
+                                  : "bg-canvas-soft-2 text-ink border-hairline",
+                              )}
                             >
                               {t.tag.name}
-                              {t.tag.category && (
-                                <span className={isAi ? "text-purple-300" : "text-brand-300"}>{t.tag.category}</span>
+                              {t.tag.category && <span className="text-mute">{t.tag.category}</span>}
+                              {isAi && (
+                                <span className="text-[10px] font-mono uppercase opacity-70">AI</span>
                               )}
-                              {isAi && <span className="text-[10px] text-purple-300">AI</span>}
                               <button
                                 type="button"
                                 onClick={() => removeTag(t)}
-                                className="text-gray-300 hover:text-red-500 leading-none"
+                                className="text-mute hover:text-error leading-none ml-0.5"
                                 title="移除标签"
                               >
-                                ✕
+                                <X className="w-3 h-3" />
                               </button>
                             </span>
                           );
@@ -390,7 +426,7 @@ export default function SlideDetailDrawer({
                   </div>
 
                   <div>
-                    <div className="text-xs text-gray-400 mb-2">添加标签</div>
+                    <div className="text-xs font-mono uppercase tracking-wider text-mute mb-2">添加标签</div>
                     {(() => {
                       const usedNames = new Set(slideTags.map((t) => t.tag.name));
                       const available = allTags.filter((t) => !usedNames.has(t.name));
@@ -400,11 +436,9 @@ export default function SlideDetailDrawer({
                             value={addTagId}
                             onChange={(e) => setAddTagId(e.target.value)}
                             disabled={available.length === 0 || tagBusy}
-                            className="border border-gray-300 rounded px-2 py-1 text-sm flex-1 disabled:bg-gray-50 disabled:text-gray-400"
+                            className="flex-1 h-9 px-3 text-sm bg-canvas text-ink border border-hairline rounded-sm outline-none focus:border-hairline-strong disabled:bg-canvas-soft-2 disabled:text-mute"
                           >
-                            <option value="">
-                              {available.length === 0 ? "所有标签已添加" : "选择标签…"}
-                            </option>
+                            <option value="">{available.length === 0 ? "所有标签已添加" : "选择标签…"}</option>
                             {available.map((t) => (
                               <option key={t.id} value={t.id}>
                                 {t.name}
@@ -412,32 +446,27 @@ export default function SlideDetailDrawer({
                               </option>
                             ))}
                           </select>
-                          <button
-                            type="button"
-                            onClick={addTag}
-                            disabled={!addTagId || tagBusy}
-                            className="px-3 py-1 text-sm bg-brand-500 text-white rounded hover:bg-brand-600 disabled:opacity-50"
-                          >
+                          <Button size="md" variant="primary" onClick={addTag} disabled={!addTagId || tagBusy} loading={tagBusy}>
                             添加
-                          </button>
+                          </Button>
                         </div>
                       );
                     })()}
                     {allTags.length === 0 && (
-                      <div className="text-xs text-gray-400 mt-1">
-                        还没有任何标签,请先到「标签管理」创建。
-                      </div>
+                      <div className="text-xs text-mute mt-1.5">还没有任何标签,请先到「标签管理」创建。</div>
                     )}
                   </div>
                 </div>
               )}
+
+              {/* File */}
               {tab === "file" && (
-                <div className="text-sm text-gray-600 space-y-2">
-                  <div>
-                    <span className="text-gray-400">所属文件:</span> {slide.presentation_title || detail?.presentation_title || "-"}
-                  </div>
+                <div className="text-sm space-y-2">
+                  <Row label="所属文件">
+                    {slide.presentation_title || detail?.presentation_title || "-"}
+                  </Row>
                   {slide.presentation_title && (
-                    <Link href="/files" className="text-brand-600 hover:underline">
+                    <Link href="/files" className="text-link hover:underline inline-block">
                       前往文件管理
                     </Link>
                   )}
@@ -447,6 +476,15 @@ export default function SlideDetailDrawer({
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+function Row({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex gap-2">
+      <span className="w-20 shrink-0 text-mute">{label}</span>
+      <span className="text-body flex-1">{children}</span>
     </div>
   );
 }
