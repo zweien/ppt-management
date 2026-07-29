@@ -11,3 +11,7 @@ Issues 和 PRDs 作为 markdown 文件存放在本 repo 的 `.scratch/` 下（lo
 ### Domain docs
 
 Single-context：根目录一个 `CONTEXT.md` + `docs/adr/`。See `docs/agents/domain.md`.
+
+### Versioning
+
+遵循 SemVer。版本号单一真相源为 `backend/app/__init__.py` 的 `__version__`（config.py import 它，前端从 `GET /` 拉取）。变更记录在根目录 `CHANGELOG.md`。发版流程与 CHANGELOG 规范见 `docs/agents/versioning.md`。

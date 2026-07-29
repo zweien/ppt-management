@@ -9,6 +9,9 @@ from typing import List
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# 版本号单一真相源:backend/app/__init__.py 的 __version__。
+# 见 docs/agents/versioning.md。
+from app import __version__
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -20,7 +23,7 @@ class Settings(BaseSettings):
 
     # --- App ---
     APP_NAME: str = "PPT 素材库"
-    APP_VERSION: str = "0.1.0"
+    APP_VERSION: str = __version__
     ENV: str = "dev"
     SECRET_KEY: str = "change-me-in-production"
     # Token expiry (minutes)

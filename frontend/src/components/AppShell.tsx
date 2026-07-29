@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { fetchVersion } from "@/lib/version";
 
 const NAV = [
   { href: "/search", label: "搜索首页", icon: "🔍" },
@@ -19,6 +20,7 @@ export default function AppShell({ children, title }: { children: React.ReactNod
   const router = useRouter();
   const pathname = usePathname();
   const [user, setUser] = useState<{ username: string } | null>(null);
+  const [version, setVersion] = useState("");
 
   useEffect(() => {
     const raw = localStorage.getItem("user");
@@ -28,6 +30,7 @@ export default function AppShell({ children, title }: { children: React.ReactNod
       return;
     }
     if (raw) setUser(JSON.parse(raw));
+    fetchVersion().then(setVersion);
   }, [router]);
 
   function logout() {
@@ -67,6 +70,15 @@ export default function AppShell({ children, title }: { children: React.ReactNod
           })}
         </nav>
         <div className="px-3 py-3 border-t border-gray-100">
+          {version && (
+            <Link
+              href="/changelog"
+              className="block text-xs text-brand-500 hover:text-brand-700 px-2 mb-2"
+              title="查看更新日志"
+            >
+              v{version}
+            </Link>
+          )}
           <div className="text-xs text-gray-400 px-2 mb-2">已登录:{user.username}</div>
           <button
             onClick={logout}
