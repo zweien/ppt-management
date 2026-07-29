@@ -8,6 +8,7 @@ import { api, ApiError, API_BASE } from "@/lib/api";
 import { presStatus } from "@/lib/status";
 import { cn } from "@/lib/cn";
 import Button from "@/components/ui/Button";
+import { Checkbox } from "@/components/ui/Checkbox";
 import { Badge } from "@/components/ui/Badge";
 import EmptyState from "@/components/ui/EmptyState";
 import { Table, THead, TH, TBody, TR, TD } from "@/components/ui/DataTable";
@@ -268,15 +269,11 @@ export default function FilesPage() {
           <h2 className="text-sm font-medium text-body">
             文件列表 {includeDeleted ? "(含回收站)" : ""} · {items.length}
           </h2>
-          <label className="flex items-center gap-2 text-sm text-body cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={includeDeleted}
-              onChange={(e) => setIncludeDeleted(e.target.checked)}
-              className="accent-[rgb(var(--primary))]"
-            />
-            显示已删除
-          </label>
+          <Checkbox
+            checked={includeDeleted}
+            onChange={(e) => setIncludeDeleted(e.target.checked)}
+            label="显示已删除"
+          />
         </div>
 
         {loading ? (

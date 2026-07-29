@@ -8,6 +8,7 @@ import SlideDetailDrawer from "@/components/SlideDetailDrawer";
 import { api, ApiError } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import Button from "@/components/ui/Button";
+import { Checkbox } from "@/components/ui/Checkbox";
 import { Select } from "@/components/ui/Input";
 import EmptyState from "@/components/ui/EmptyState";
 import { useToast } from "@/components/ui/Toast";
@@ -108,18 +109,14 @@ export default function PagesPage() {
       <div className="space-y-4">
         {/* Batch toolbar */}
         <div className="bg-surface rounded-md shadow-e2 p-4 flex items-center gap-3 flex-wrap">
-          <label className="flex items-center gap-2 text-sm text-body cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={selectMode}
-              onChange={(e) => {
-                setSelectMode(e.target.checked);
-                setSelected(new Set());
-              }}
-              className="accent-[rgb(var(--primary))]"
-            />
-            批量选择模式
-          </label>
+          <Checkbox
+            checked={selectMode}
+            onChange={(e) => {
+              setSelectMode(e.target.checked);
+              setSelected(new Set());
+            }}
+            label="批量选择模式"
+          />
           {selectMode && (
             <>
               <span className="text-sm text-mute">已选 {selected.size} 个</span>

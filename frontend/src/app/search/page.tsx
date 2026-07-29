@@ -9,6 +9,7 @@ import { api, ApiError } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import Button from "@/components/ui/Button";
 import { Input, Select } from "@/components/ui/Input";
+import { Checkbox } from "@/components/ui/Checkbox";
 import { Tabs } from "@/components/ui/Tabs";
 import { Badge } from "@/components/ui/Badge";
 import EmptyState from "@/components/ui/EmptyState";
@@ -153,37 +154,25 @@ export default function SearchPage() {
               搜索
             </Button>
           </div>
-          <div className="mt-3 flex items-center justify-between flex-wrap gap-3">
-            <div className="flex gap-1.5 flex-wrap">
+          <div className="mt-4 flex items-center justify-between gap-4 flex-wrap">
+            <div className="flex items-center gap-1.5 flex-wrap">
               {["无人系统", "总体架构", "项目研究目标", "能力现状"].map((t) => (
                 <button
                   key={t}
                   onClick={() => setQuery(t)}
-                  className="text-xs px-2.5 py-1 text-body bg-canvas-soft-2 border border-hairline rounded-pill hover:text-ink hover:border-hairline-strong transition"
+                  className="h-7 inline-flex items-center text-xs px-2.5 text-body bg-canvas-soft-2 border border-hairline rounded-pill hover:text-ink hover:border-hairline-strong transition"
                 >
                   {t}
                 </button>
               ))}
             </div>
-            <div className="flex items-center gap-3 text-xs">
-              <label className="flex items-center gap-1.5 text-body cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={favoriteOnly}
-                  onChange={(e) => setFavoriteOnly(e.target.checked)}
-                  className="accent-[rgb(var(--primary))]"
-                />
-                仅看收藏
-              </label>
-              <label className="flex items-center gap-1.5 text-body cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={includeHistorical}
-                  onChange={(e) => setIncludeHistorical(e.target.checked)}
-                  className="accent-[rgb(var(--primary))]"
-                />
-                包含历史版本
-              </label>
+            <div className="flex items-center gap-3">
+              <Checkbox checked={favoriteOnly} onChange={(e) => setFavoriteOnly(e.target.checked)} label="仅看收藏" />
+              <Checkbox
+                checked={includeHistorical}
+                onChange={(e) => setIncludeHistorical(e.target.checked)}
+                label="包含历史版本"
+              />
               <Select inputSize="sm" value={sort} onChange={(e) => setSort(e.target.value)} className="w-28">
                 <option value="relevance">相关度</option>
                 <option value="recent">上传时间</option>
