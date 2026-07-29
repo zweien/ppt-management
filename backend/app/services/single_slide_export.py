@@ -161,49 +161,67 @@ def export_single_slide(source_pptx_bytes: bytes, slide_number: int) -> ExportRe
                 queue.append(abs_target)
         rels_to_copy[part] = kept_rels
 
-    # 3. 还需复制 presentation 级必需 part:presentation.xml 本身(精简)、theme、core props
-    #    这里采用更稳的方式:复制整个源包,然后从 presentation.xml 移除其他 slide 的引用,
-    #    并删除其他 slide part。这样 Content_Types / masters / layouts / theme 全自动保留。
+    # 3. 决定保留哪些 part:目标 slide 可达的依赖(BFS visited)+ 包级必需结构 part。
+    #    关键:media 只保留目标 slide 经 layout/master/slide 自身关系可达的,
+    #    避免把整包 media(其他页的视频/GIF/图片)全部复制(否则单页文件膨胀到上百 MB)。
+    # 包级必需 part(不随 slide 变化,需保留以维持合法 PPTX 结构):
+    always_keep_prefixes = (
+        "ppt/slideMasters/", "ppt/slideLayouts/", "ppt/theme/",
+        "ppt/_rels/presentation.xml.rels", "ppt/presentation.xml",
+        "ppt/presProps", "ppt/viewProps", "ppt/tableStyles",
+        "ppt/notesMasters/", "_rels/.rels", "[Content_Types].xml",
+        "docProps/",
+    )
+
+    def _is_structural(name: str) -> bool:
+        return any(name.startswith(p) or name == p.rstrip("/") for p in always_keep_prefixes)
+
+    # 目标 slide 对应的 notesSlide(可选依赖)
+    target_notes = set()
+    target_slide_rels = _parse_rels(src, _rels_path(target_slide_part))
+    for rid, tl, target, mode in target_slide_rels:
+        if tl == "notesSlide" and mode != "External":
+            abs_t = _normalize_part(_resolve_relationship(target, target_slide_part))
+            target_notes.add(abs_t)
+            target_notes.add(_rels_path(abs_t))
+
+    # 最终保留集合:可达依赖 ∪ 结构 part ∪ 目标 notesSlide
+    kept: set[str] = set()
+    for name in src.namelist():
+        if name in parts_to_copy:  # BFS 可达(含 target slide 及其 media/layout/master/theme/chart...)
+            kept.add(name)
+            continue
+        if _is_structural(name):
+            kept.add(name)
+            continue
+        if name in target_notes:
+            kept.add(name)
+            continue
+
+    # .rels 文件:保留其 source part 在 kept 中的那些(source part 的 rels 才有意义)
+    def _source_of_rels(rels_name: str) -> str:
+        # ppt/slides/_rels/slide1.xml.rels -> ppt/slides/slide1.xml
+        # _rels/.rels -> (root,无 source,包级)
+        if rels_name == "_rels/.rels":
+            return ""
+        idx = rels_name.find("/_rels/")
+        if idx >= 0:
+            return rels_name[:idx] + "/" + rels_name[idx + len("/_rels/"):][:-5]
+        if rels_name.startswith("_rels/"):
+            return rels_name[len("_rels/"):][:-5]
+        return ""
+    for name in src.namelist():
+        if name.endswith(".rels") and name not in kept:
+            src_part = _source_of_rels(name)
+            if src_part == "" or src_part in kept:
+                kept.add(name)
+
     out_buf = io.BytesIO()
     with zipfile.ZipFile(out_buf, "w", zipfile.ZIP_DEFLATED) as out:
-        # 复制所有非 slide 的 part;slide 只保留目标页及其依赖
-        other_slide_parts = set()
         for info in src.infolist():
             name = info.filename
-            # 列出所有 slide part(ppt/slides/slideN.xml)
-            if name.startswith("ppt/slides/slide") and name.endswith(".xml") and "/_rels/" not in name:
-                if name != target_slide_part:
-                    other_slide_parts.add(name)
-                    # 其 rels
-                    other_slide_parts.add(_rels_path(name))
-
-        # 同时移除目标页之外的 notesSlides(它们引用被删的 slide,会留下悬空 rels)
-        # 找出目标 slide 对应的 notesSlide(通过 slide 的 rels 找 notesSlide 关系)
-        target_notes = set()
-        target_slide_rels = _parse_rels(src, _rels_path(target_slide_part))
-        for rid, tl, target, mode in target_slide_rels:
-            if tl == "notesSlide" and mode != "External":
-                abs_t = _normalize_part(_resolve_relationship(target, target_slide_part))
-                target_notes.add(abs_t)
-                target_notes.add(_rels_path(abs_t))
-        # 收集要删除的 notesSlides:不属于目标 slide 的
-        notes_to_remove = set()
-        for info in src.infolist():
-            n = info.filename
-            if (n.startswith("ppt/notesSlides/notesSlide") and n.endswith(".xml")) or \
-               (n.startswith("ppt/notesSlides/_rels/notesSlide") and n.endswith(".rels")):
-                if n not in target_notes:
-                    notes_to_remove.add(n)
-
-        kept_parts: set[str] = set()
-        for info in src.infolist():
-            if info.filename not in other_slide_parts and info.filename not in notes_to_remove:
-                kept_parts.add(info.filename)
-
-        for info in src.infolist():
-            name = info.filename
-            if name in other_slide_parts or name in notes_to_remove:
-                continue  # 删除其他 slide 及其 notes
+            if name not in kept:
+                continue  # 删除未引用的 part(主要是其他页的 media)
             # presentation.xml 单独处理(移除其他 sldId 引用)
             if name == "ppt/presentation.xml":
                 new_pres = _prune_presentation_xml(pres_root_data, [target_rid], P_NS, R_NS)
@@ -216,7 +234,7 @@ def export_single_slide(source_pptx_bytes: bytes, slide_number: int) -> ExportRe
                 continue
             if name == "[Content_Types].xml":
                 # 移除指向不存在 part 的 Override(否则包校验失败)
-                new_ct = _prune_content_types(src.read(name), kept_parts)
+                new_ct = _prune_content_types(src.read(name), kept)
                 out.writestr(name, new_ct)
                 continue
             out.writestr(name, src.read(name))
