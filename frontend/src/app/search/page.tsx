@@ -172,21 +172,23 @@ export default function SearchPage() {
             </div>
           </div>
 
-          {/* Result controls — filters / sort / view, all h-7, grouped with dividers */}
-          <div className="mt-3 pt-3 border-t border-hairline flex items-center gap-2 flex-wrap">
-            <Checkbox checked={favoriteOnly} onChange={(e) => setFavoriteOnly(e.target.checked)} label="仅看收藏" />
-            <Checkbox
-              checked={includeHistorical}
-              onChange={(e) => setIncludeHistorical(e.target.checked)}
-              label="包含历史版本"
-            />
-            <span className="w-px h-5 bg-hairline mx-1" aria-hidden />
-            <Select inputSize="xs" value={sort} onChange={(e) => setSort(e.target.value)} className="w-28">
-              <option value="relevance">相关度</option>
-              <option value="recent">上传时间</option>
-              <option value="title">标题</option>
-            </Select>
-            <div className="ml-auto">
+          {/* Result controls — filters+sort kept together on one line; view
+              tabs float right. Group is shrink-0 so checkbox+select never split. */}
+          <div className="mt-3 pt-3 border-t border-hairline flex items-center gap-3 flex-wrap">
+            <div className="flex items-center gap-3 shrink-0">
+              <Checkbox checked={favoriteOnly} onChange={(e) => setFavoriteOnly(e.target.checked)} label="仅看收藏" />
+              <Checkbox
+                checked={includeHistorical}
+                onChange={(e) => setIncludeHistorical(e.target.checked)}
+                label="包含历史版本"
+              />
+              <Select inputSize="xs" value={sort} onChange={(e) => setSort(e.target.value)} className="w-28">
+                <option value="relevance">相关度</option>
+                <option value="recent">上传时间</option>
+                <option value="title">标题</option>
+              </Select>
+            </div>
+            <div className="ml-auto shrink-0">
               <Tabs
                 items={[
                   { key: "slides", label: "页面卡片" },
