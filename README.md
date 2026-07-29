@@ -26,8 +26,10 @@
 - 📄 **三路解析** —— Open XML 原生结构(真值)+ LibreOffice 渲染(预览)+ MinerU 增强 OCR,任一失败不阻断基础可检索
 - 🖼️ **页级复用** —— 下载页面 PNG、复制页面文字、下载源 PPTX、(阶段三)导出仅含目标页的单页 PPTX(关系图遍历,保留原生可编辑对象)
 - 🏷️ **标签与收藏** —— AI 自动标签 + 用户自定义标签 + 批量维护 + 收藏夹 + 软删除回收站
-- ⚙️ **模型配置中心** —— 文本/视觉/Embedding 三类 OpenAI 兼容配置独立维护,API Key 加密存储、脱敏显示、连接测试
-- 🔐 **单管理员、内网友好** —— 全开源组件,可本地/内网部署,不绑定云厂商
+- ⚙️ **运行时配置中心** —— 上传限制、AI 服务地址、Token 过期、CORS 等**运行时可改、立即生效**(DB 化 + 进程缓存);文本/视觉/Embedding 模型配置独立维护,API Key 加密存储、脱敏显示、连接测试。模型配置与系统设置统一在「设置」页(管理员)
+- 📤 **批量上传队列** —— 拖拽多文件并发上传,客户端 SHA-256 预检查重(文件只传一次),独立进度与取消,重复确认;解析进度在文件列表实时可见
+- 🎨 **Vercel 设计语言 + 浅深双主题** —— 黑墨 CTA + mesh 渐变品牌,侧边栏一键切换浅/深主题并持久化
+- 🔐 **管理员鉴权 + 内网友好** —— `is_superuser` 保护设置接口,全开源组件,可本地/内网部署,不绑定云厂商
 
 ## 🚀 快速开始
 
@@ -62,12 +64,14 @@ docker compose up -d
 
 ### 启用 AI 增强(可选)
 
-在「模型配置」页填入 OpenAI 兼容端点,即可解锁:
+登录后进入「设置 → 模型配置」(管理员),填入 OpenAI 兼容端点,即可解锁:
 
 - **Embedding**(如 bge-m3 / text-embedding-3-small)→ 语义检索
 - **视觉模型**(如 gpt-4o)→ 页面摘要与 AI 标签
 
 配置完成后对已上传文件点「重新解析」即可触发。MinerU 增强解析需单独启动 `mineru-api` 服务(见 [文档](#-文档))。
+
+> 上传限制、AI 服务地址、Token 有效期等可在「设置」页随时调整,改完立即生效(api/worker 缓存 ≤30s),无需改环境变量或重启。
 
 ## 🧱 系统架构
 
@@ -115,7 +119,7 @@ docker compose up -d
 
 | 层 | 技术 |
 |---|---|
-| **前端** | Next.js 14 · TypeScript · Tailwind CSS · 清华紫主题 |
+| **前端** | Next.js 14 · TypeScript · Tailwind CSS · Vercel 设计语言(浅深双主题)· lucide 图标 · 自建 UI 原语 |
 | **后端** | Python · FastAPI · SQLAlchemy 2 · Alembic · Pydantic |
 | **任务** | Celery + Redis(四组 worker:basic / render / mineru / ai) |
 | **数据库** | PostgreSQL 16 + pgvector(向量)+ pg_trgm(模糊)|
@@ -142,7 +146,10 @@ docker compose up -d
 
 - [x] **阶段一 · 基础素材库** —— 上传、Open XML 解析、渲染、关键词全文搜索、页级复用、任务中心、标签与回收站
 - [x] **阶段二 · AI 理解与语义检索** —— 模型配置中心、MinerU 增强、视觉分析、pgvector、RRF 混合检索、命中解释
-- [ ] **阶段三 · 版本与复用增强** —— 版本链与页面变化匹配、单页 PPTX 导出(关系图遍历 + 校验)、任务中心完善
+- [x] **阶段三 · 版本与复用增强** —— 版本链与页面变化匹配、单页 PPTX 导出(关系图遍历 + 校验)、任务中心完善
+- [x] **UX 升级 · Vercel 设计语言** —— 全量重构为浅深双主题 + 自建 UI 原语 + 统一 Modal/Toast + 分组导航
+- [x] **运行时配置 · 设置页** —— 业务配置 DB 化、运行时改、即时生效 + 管理员鉴权
+- [x] **上传体验优化** —— 去双传 + 批量队列 + SHA-256 预检 + 解析进度可视化
 
 后续演进:团队化多用户 / NAS 自动采集 / 以图搜图 / 元素级素材拆解 / 多页组装新 PPT。
 
@@ -151,15 +158,17 @@ docker compose up -d
 ```
 ├── backend/              FastAPI 后端
 │   ├── app/
-│   │   ├── api/routers/  REST 端点(auth/uploads/presentations/search/tags/jobs/model_configs)
-│   │   ├── models/       SQLAlchemy ORM(Presentation/Version/Slide/Job/...)
-│   │   ├── services/     ModelProvider / hybrid_search / openxml / mineru_client / vision_analyzer
+│   │   ├── api/routers/  REST 端点(auth/uploads/presentations/search/tags/jobs/model_configs/settings)
+│   │   ├── models/       SQLAlchemy ORM(Presentation/Version/Slide/Job/AppSetting/...)
+│   │   ├── services/     ModelProvider / hybrid_search / openxml / mineru_client / vision_analyzer / runtime_config
 │   │   └── tasks/        Celery 任务(basic/render/mineru/ai)
 │   ├── alembic/          数据库迁移
 │   └── dict/             领域分词词典(jieba)
-├── frontend/             Next.js 前端(11 个页面 + 共享组件)
+├── frontend/             Next.js 前端(11 个页面 + 共享 UI 原语 + UploadQueue)
+│   └── src/components/ui/  Button/Card/Input/Badge/Modal/Toast/Tabs/Checkbox/...
 ├── infra/docker/         Dockerfile(api/web/worker-basic/worker-render)
 ├── docs/adr/             架构决策记录
+├── DESIGN.md             Vercel 设计规范
 ├── CONTEXT.md            领域语言
 └── docker-compose.yml    全栈编排
 ```
