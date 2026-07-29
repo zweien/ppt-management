@@ -59,6 +59,28 @@ export const CHANGELOG: ChangelogEntry[] = [
     sections: [],
   },
   {
+    version: "0.4.0",
+    date: "2026-07-30",
+    sections: [
+      {
+        kind: "✨ 新功能",
+        items: [
+          "任务中心展示更多信息:后端 JobOut 加 target 名称/parent_id/page_no,GET /api/jobs 批量解析(N+1 安全);前端富表格显示友好类型标签、stage 中文、对象名称、派生耗时、进度条,失败行展开看 error 详情",
+          "任务操作列「查看对象」:每行加跳转链接到对应文件详情页",
+          "新增 Checkbox 原语(固定尺寸 + shrink-0 + whitespace-nowrap,baseline 对齐)",
+        ],
+      },
+      {
+        kind: "🐛 修复",
+        items: [
+          "侧边栏底部固定:sticky top-0 h-screen,长页面 footer 始终贴底",
+          "搜索栏布局:控件高度不齐 + 换行,重设计三行 + 统一 h-7 + Input xs 尺寸 + Tabs 压缩",
+          "checkbox 文字竖排:label 被压缩致文字逐字换行,加 shrink-0 + whitespace-nowrap",
+        ],
+      },
+    ],
+  },
+  {
     version: "0.3.0",
     date: "2026-07-29",
     sections: [

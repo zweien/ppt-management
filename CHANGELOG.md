@@ -5,6 +5,22 @@
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-07-30
+
+本版聚焦:任务中心信息密度增强 + 搜索栏/侧边栏 UX 修复。
+
+### ✨ 新功能
+
+- **任务中心展示更多信息**:JobOut 加 `target_name` / `target_parent_name` / `target_parent_id` / `target_page_no`,后端 `GET /api/jobs` 批量解析 target 名称(N+1 安全,100 条仅 3 次查询);前端富表格显示友好类型标签(`parse_mineru`→MinerU 解析)、stage 中文、对象名称(文件名/第N页)、派生耗时(`finished - started`)、进度条,失败任务行展开看 error_code + 完整 message (`771bc10`)
+- **任务操作列「查看对象」**:每行加跳转链接到对应文件详情页(`/files/{parent_id}`),解决非失败任务操作列为空的问题 (`ce64c2c`)
+- **Checkbox 原语**(`src/components/ui/Checkbox.tsx`):固定 16px 输入 + h-7 label + shrink-0 + whitespace-nowrap,baseline 对齐 (`eb7005f`)
+
+### 🐛 修复
+
+- **侧边栏底部固定**:长页面时 aside 随主内容拉高导致 footer 被推到文档底部,改 `sticky top-0 h-screen` 固定视口高度吸顶,footer 始终贴底 (`950dbca`)
+- **搜索栏布局**:checkbox/select/tabs 高度不齐(28/32/40px)且换行成 96px;重设计为输入行 / 快捷词 / 结果控件三行,统一 h-7,Input 新增 xs 尺寸,Tabs 压缩到 h-7 (`0df7b6c`)
+- **checkbox 文字竖排**:label flex-shrink:1 被压缩 + whiteSpace:normal 致文字逐字换行;加 shrink-0 + whitespace-nowrap (`fcf0cf6`)
+
 ## [0.3.0] - 2026-07-29
 
 本版聚焦:按 Vercel 设计语言全量重构前端 UX,从早期 Tailwind 模板升级到专业系统级体验。
