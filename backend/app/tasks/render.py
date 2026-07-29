@@ -168,6 +168,14 @@ def render_preview_task(self, version_id: str) -> dict:  # noqa: ANN001
             mark_success(db, job)
             db.commit()
             logger.info("Rendered version %s: %d pages", version_id, len(image_pairs))
+
+            # Trigger MinerU enrichment (best-effort; fails silently if no mineru service)
+            try:
+                from app.tasks.mineru import parse_mineru_task
+                parse_mineru_task.apply_async(args=[version_id], countdown=15)
+            except Exception:
+                pass
+
             return {"version_id": version_id, "pages": len(image_pairs)}
         finally:
             shutil.rmtree(workdir, ignore_errors=True)

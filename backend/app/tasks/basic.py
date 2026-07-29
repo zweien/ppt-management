@@ -92,6 +92,14 @@ def parse_openxml_task(self, version_id: str) -> dict:  # noqa: ANN001
         from app.tasks.render import render_preview_task
         render_preview_task.delay(version_id)
 
+        # Trigger visual analysis per slide (best-effort; skips if no vision config)
+        try:
+            from app.tasks.ai import analyze_visual_task
+            for s in db.query(Slide).filter(Slide.version_id == version_id).all():
+                analyze_visual_task.apply_async(args=[s.id], countdown=20)
+        except Exception:
+            pass
+
         return {"version_id": version_id, "slides": page_count}
     except Exception as e:
         logger.exception("parse_openxml failed for %s", version_id)

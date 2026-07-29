@@ -48,3 +48,5 @@ venv/
 # --- Docker local volumes (shouldn't exist in repo, but just in case) ---
 postgres_data/
 minio_data/
+output/
+*.pdf

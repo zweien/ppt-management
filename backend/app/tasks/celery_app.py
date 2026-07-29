@@ -10,7 +10,7 @@ celery_app = Celery(
     "ppt_library",
     broker=settings.celery_broker_url,
     backend=settings.celery_result_backend,
-    include=["app.tasks.basic", "app.tasks.render"],
+    include=["app.tasks.basic", "app.tasks.render", "app.tasks.mineru", "app.tasks.ai"],
 )
 
 celery_app.conf.update(

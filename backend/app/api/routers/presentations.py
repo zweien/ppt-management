@@ -169,6 +169,7 @@ def get_slide(slide_id: str, db: Session = Depends(get_db),
         user_note=s.user_note, fingerprint=s.fingerprint,
         preview_url=prev_url, thumbnail_url=thumb_url,
         content_json=s.content_json, presentation_title=pres.title if pres else None,
+        mineru_markdown=s.mineru_markdown,
     )
 
 

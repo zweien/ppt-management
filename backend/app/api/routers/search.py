@@ -1,65 +1,135 @@
-"""搜索路由(§8, ADR-0004 应用层 jieba, ADR-0003 阶段一仅全文路)。"""
-from sqlalchemy import distinct, func, or_, select, text
-from sqlalchemy.orm import Session
+"""搜索路由(§8, ADR-0003/0004/0007):RRF 混合检索 + 标签筛选 + 命中原因 + 文件聚合。"""
+import re
+from collections import defaultdict
+
 from fastapi import APIRouter, Depends, Query
+from pydantic import BaseModel
+from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
 from app.core.storage import get_storage
 from app.db.session import get_db
-from app.models import Presentation, PresentationVersion, Slide, User
+from app.models import Presentation, PresentationVersion, Slide, Tag, User
 from app.schemas.presentation import SlideOut
-from app.services.tokenizer import query_segment
+from app.services.hybrid_search import hybrid_search
 
 router = APIRouter(prefix="/api/search", tags=["search"])
 
 
-@router.get("/slides", response_model=list[SlideOut])
+class HitReasonOut(BaseModel):
+    slide: SlideOut
+    score: float
+    hit_reasons: list[str]
+
+
+@router.get("/slides", response_model=list[HitReasonOut])
 def search_slides(
     q: str = Query("", description="关键词"),
+    tag_ids: str = Query("", description="逗号分隔的标签 id"),
+    favorite_only: bool = Query(False),
+    sort: str = Query("relevance", pattern="^(relevance|recent|title)$"),
     page: int = Query(1, ge=1),
     page_size: int = Query(24, ge=1, le=100),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-) -> list[SlideOut]:
-    """关键词全文搜索(应用层 jieba 切词, simple tsvector)。默认仅当前版本。"""
-    query = q.strip()
+) -> list[HitReasonOut]:
+    """混合检索(RRF + bonus)。返回命中原因。"""
     storage = get_storage()
+    tids = [t.strip() for t in tag_ids.split(",") if t.strip()] if tag_ids else []
 
-    # Base: slides of current versions, not deleted
-    base = (
-        db.query(Slide, Presentation.title.label("pres_title"))
-        .join(PresentationVersion, Slide.version_id == PresentationVersion.id)
-        .join(Presentation, PresentationVersion.presentation_id == Presentation.id)
-        .filter(Presentation.deleted_at.is_(None))
-        .filter(Presentation.current_version_id == PresentationVersion.id)
+    query = q.strip()
+    hits = hybrid_search(
+        db, query, tag_ids=tids,
+        favorite_user_id=user.id, favorite_only=favorite_only,
+        topn=page * page_size,
     )
 
-    if not query:
-        # Empty query: return recent slides
-        rows = (
-            base.order_by(Slide.created_at.desc())
-            .offset((page - 1) * page_size)
-            .limit(page_size)
-            .all()
-        )
-    else:
-        seg = query_segment(query)
-        # Build tsquery against the segmented text_search column
-        # Rank by ts_rank over the segmented text
-        tsq = func.plainto_tsquery("simple", seg)
-        rank = func.ts_rank(func.to_tsvector("simple", Slide.text_search), tsq)
-        rows = (
-            base.filter(Slide.text_search.isnot(None))
-            .filter(func.to_tsvector("simple", Slide.text_search).op("@@")(tsq))
-            .order_by(rank.desc())
-            .offset((page - 1) * page_size)
-            .limit(page_size)
-            .all()
-        )
+    # sort override
+    if sort == "recent":
+        hits.sort(key=lambda h: h.slide.created_at, reverse=True)
+    elif sort == "title":
+        hits.sort(key=lambda h: (h.slide.title or ""))
+
+    # paginate
+    start = (page - 1) * page_size
+    page_hits = hits[start:start + page_size]
 
     out = []
-    for s, pres_title in rows:
+    for h in page_hits:
+        s = h.slide
         prev = storage.presigned_get_url(s.preview_object_key) if s.preview_object_key else None
         thumb = storage.presigned_get_url(s.thumbnail_object_key) if s.thumbnail_object_key else None
-        out.append(SlideOut.from_model(s, preview_url=prev, thumbnail_url=thumb, presentation_title=pres_title))
+        slide_out = SlideOut.from_model(s, preview_url=prev, thumbnail_url=thumb,
+                                        presentation_title=h.presentation_title)
+        out.append(HitReasonOut(slide=slide_out, score=round(h.score, 4),
+                                hit_reasons=h.hit_reasons))
     return out
+
+
+@router.get("/presentations", response_model=list[dict])
+def search_presentations(
+    q: str = Query(""),
+    tag_ids: str = Query(""),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> list[dict]:
+    """文件聚合视图:按文件分组展示命中页面(SE-04)。"""
+    storage = get_storage()
+    tids = [t.strip() for t in tag_ids.split(",") if t.strip()] if tag_ids else []
+    hits = hybrid_search(db, q.strip(), tag_ids=tids, topn=page * page_size * 2)
+
+    # group by presentation
+    groups: dict[str, dict] = {}
+    order = []
+    for h in hits:
+        s = h.slide
+        pres_id = None
+        version = db.get(PresentationVersion, s.version_id)
+        if version:
+            pres_id = version.presentation_id
+        key = pres_id or "unknown"
+        if key not in groups:
+            pres = db.get(Presentation, key) if pres_id else None
+            groups[key] = {"id": key, "title": pres.title if pres else h.presentation_title or "",
+                           "slides": []}
+            order.append(key)
+        thumb = storage.presigned_get_url(s.thumbnail_object_key) if s.thumbnail_object_key else None
+        groups[key]["slides"].append({
+            "id": s.id, "page_no": s.page_no, "title": s.title,
+            "thumbnail_url": thumb, "hit_reasons": h.hit_reasons,
+        })
+
+    return [groups[k] for k in order][:page_size]
+
+
+@router.get("/tag-facets")
+def tag_facets(
+    q: str = Query(""),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> list[dict]:
+    """标签分面:返回各标签及其在当前结果集中的命中数(供筛选 UI)。"""
+    from app.models import SlideTag
+    hits = hybrid_search(db, q.strip(), topn=200)
+    slide_ids = [h.slide.id for h in hits]
+    if not slide_ids:
+        return []
+    rows = (
+        db.query(Tag.id, Tag.name, Tag.category, func_count(SlideTag.slide_id))
+        .join(SlideTag, SlideTag.tag_id == Tag.id)
+        .filter(SlideTag.slide_id.in_(slide_ids))
+        .group_by(Tag.id, Tag.name, Tag.category)
+        .order_by(Tag.category, Tag.name)
+        .all()
+    )
+    return [{"id": r[0], "name": r[1], "category": r[2], "count": r[3]} for r in rows]
+
+
+# import here to avoid circular
+from sqlalchemy import func as _f
+
+
+def func_count(col):
+    return _f.count(col)

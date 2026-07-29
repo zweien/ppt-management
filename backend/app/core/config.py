@@ -71,6 +71,12 @@ class Settings(BaseSettings):
     # --- Storage of derived object keys prefix ---
     STORAGE_SOURCE_NAME: str = "source.pptx"
 
+    # --- MinerU API (ADR-0007): host-side mineru-api service ---
+    MINERU_API_URL: str = "http://host.docker.internal:8765"
+
+    # --- Vision model image scaling (ADR-0007) ---
+    VISION_IMAGE_MAX_LONG_EDGE: int = 1568
+
     @property
     def postgres_dsn(self) -> str:
         return (

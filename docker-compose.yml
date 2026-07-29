@@ -55,6 +55,9 @@ services:
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-changeme123}
       SECRET_KEY: ${SECRET_KEY:-dev-secret-change-me}
       APP_ENCRYPTION_KEY: ${APP_ENCRYPTION_KEY:-dGVzdC1tYXN0ZXIta2V5LTEyMzQ1Njc4OTAxMjM0NTY=}
+      MINERU_API_URL: ${MINERU_API_URL:-http://host.docker.internal:8765}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       postgres:
         condition: service_healthy
@@ -91,6 +94,36 @@ services:
       redis:
         condition: service_healthy
     restart: unless-stopped
+
+  worker-mineru:
+    build:
+      context: ./backend
+      dockerfile: ../infra/docker/Dockerfile.worker-basic
+    environment: *app_env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    command: >
+      celery -A app.tasks.celery_app worker -Q mineru --concurrency=1
+      --loglevel=info -n mineru@%h
+
+  worker-ai:
+    build:
+      context: ./backend
+      dockerfile: ../infra/docker/Dockerfile.worker-basic
+    environment: *app_env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    command: >
+      celery -A app.tasks.celery_app worker -Q ai --concurrency=2
+      --loglevel=info -n ai@%h
 
   web:
     build:

@@ -17,6 +17,7 @@ interface SlideDetail {
   fingerprint: string | null;
   presentation_title: string | null;
   content_json: any;
+  mineru_markdown?: string | null;
 }
 
 export default function SlideDetailDrawer({
@@ -29,12 +30,15 @@ export default function SlideDetailDrawer({
   onMsg?: (m: string) => void;
 }) {
   const [detail, setDetail] = useState<SlideDetail | null>(null);
-  const [tab, setTab] = useState<"basic" | "text" | "file">("basic");
+  const [aiTags, setAiTags] = useState<{ id: string; tag: { name: string; category: string | null }; origin: string }[]>([]);
+  const [showAi, setShowAi] = useState(false);
+  const [tab, setTab] = useState<"basic" | "text" | "mineru" | "tags" | "file">("basic");
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (!slide) {
       setDetail(null);
+      setAiTags([]);
       return;
     }
     let cancelled = false;
@@ -42,8 +46,16 @@ export default function SlideDetailDrawer({
     setTab("basic");
     (async () => {
       try {
-        const d = await api.get<SlideDetail>(`/api/slides/${slide.id}`);
-        if (!cancelled) setDetail(d);
+        const [d, tags] = await Promise.all([
+          api.get<SlideDetail>(`/api/slides/${slide.id}`),
+          api.get<{ id: string; tag: { name: string; category: string | null }; origin: string }[]>(
+            `/api/slides/${slide.id}/tags`
+          ),
+        ]);
+        if (!cancelled) {
+          setDetail(d);
+          setAiTags(tags.filter((t) => t.origin === "ai"));
+        }
       } catch (e) {
         if (!cancelled) onMsg?.(e instanceof ApiError ? e.message : "加载详情失败");
       } finally {
@@ -119,18 +131,20 @@ export default function SlideDetailDrawer({
                 </button>
               </div>
 
-              <div className="border-b border-gray-200 flex gap-1">
-                {([["basic", "基本信息"], ["text", "原始文字"], ["file", "所在文件"]] as const).map(([k, label]) => (
-                  <button
-                    key={k}
-                    onClick={() => setTab(k)}
-                    className={`px-4 py-2 text-sm border-b-2 -mb-px ${
-                      tab === k ? "border-brand-500 text-brand-600 font-medium" : "border-transparent text-gray-500"
-                    }`}
-                  >
-                    {label}
-                  </button>
-                ))}
+              <div className="border-b border-gray-200 flex gap-1 overflow-x-auto">
+                {([["basic", "基本信息"], ["text", "原始文字"], ["mineru", "MinerU"], ["tags", "标签"], ["file", "所在文件"]] as const).map(
+                  ([k, label]) => (
+                    <button
+                      key={k}
+                      onClick={() => setTab(k)}
+                      className={`px-4 py-2 text-sm border-b-2 -mb-px whitespace-nowrap ${
+                        tab === k ? "border-brand-500 text-brand-600 font-medium" : "border-transparent text-gray-500"
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  )
+                )}
               </div>
 
               {tab === "basic" && (
@@ -138,7 +152,14 @@ export default function SlideDetailDrawer({
                   <div><span className="text-gray-400">页码:</span> 第 {slide.page_no} 页</div>
                   <div><span className="text-gray-400">标题:</span> {detail?.title || "-"}</div>
                   <div><span className="text-gray-400">人工摘要:</span> {detail?.manual_summary || "(待填写)"}</div>
-                  <div><span className="text-gray-400">AI 摘要:</span> <span className="text-gray-300">(阶段二)</span></div>
+                  <div>
+                    <span className="text-gray-400">AI 摘要:</span>{" "}
+                    {detail?.ai_summary ? (
+                      <span className="text-gray-700">{detail.ai_summary}</span>
+                    ) : (
+                      <span className="text-gray-300">(未生成)</span>
+                    )}
+                  </div>
                   <div><span className="text-gray-400">备注:</span> {detail?.notes_text || "-"}</div>
                   <div>
                     <span className="text-gray-400">指纹:</span>{" "}
@@ -149,6 +170,45 @@ export default function SlideDetailDrawer({
               {tab === "text" && (
                 <div className="text-sm text-gray-700 whitespace-pre-wrap font-mono bg-gray-50 p-3 rounded max-h-72 overflow-auto">
                   {detail?.native_text || "(无原生文字)"}
+                </div>
+              )}
+              {tab === "mineru" && (
+                <div className="text-sm text-gray-700 whitespace-pre-wrap bg-gray-50 p-3 rounded max-h-72 overflow-auto">
+                  {detail?.mineru_markdown || "(MinerU 未解析或无内容)"}
+                </div>
+              )}
+              {tab === "tags" && (
+                <div className="text-sm space-y-3">
+                  <div>
+                    <div className="text-xs text-gray-400 mb-1">人工标签 / 已确认</div>
+                    <div className="flex flex-wrap gap-1.5">
+                      <span className="text-xs px-2 py-0.5 bg-gray-50 text-gray-400 border border-gray-200 rounded">
+                        暂无(可在标签管理添加)
+                      </span>
+                    </div>
+                  </div>
+                  <div>
+                    <button
+                      onClick={() => setShowAi((s) => !s)}
+                      className="text-xs text-brand-600 hover:underline mb-1"
+                    >
+                      {showAi ? "隐藏" : "显示"} AI 建议 {aiTags.length > 0 && `(${aiTags.length})`}
+                    </button>
+                    {showAi && (
+                      <div className="flex flex-wrap gap-1.5">
+                        {aiTags.length === 0 ? (
+                          <span className="text-xs text-gray-400">(无 AI 标签)</span>
+                        ) : (
+                          aiTags.map((t) => (
+                            <span key={t.id} className="text-xs px-2 py-0.5 bg-purple-50 text-purple-600 border border-purple-200 rounded">
+                              {t.tag.name}
+                              {t.tag.category && <span className="text-purple-300 ml-1">{t.tag.category}</span>}
+                            </span>
+                          ))
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
               {tab === "file" && (

@@ -75,8 +75,8 @@ class SlideOut(BaseModel):
 
 
 class SlideDetail(SlideOut):
-    notes_text: Optional[str] = None
     content_json: Optional[dict[str, Any]] = None
+    mineru_markdown: Optional[str] = None
 
 
 class JobOut(BaseModel):

@@ -12,6 +12,7 @@ from app.api.routers.presentations import router as presentations_router
 from app.api.routers.jobs import router as jobs_router
 from app.api.routers.search import router as search_router
 from app.api.routers.tags import router as tags_router
+from app.api.routers.model_configs import router as model_configs_router
 from app.core.config import settings
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
@@ -37,6 +38,7 @@ def create_app() -> FastAPI:
     app.include_router(jobs_router)
     app.include_router(search_router)
     app.include_router(tags_router)
+    app.include_router(model_configs_router)
 
     @app.on_event("startup")
     def _startup() -> None:

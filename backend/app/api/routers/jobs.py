@@ -89,6 +89,15 @@ def _dispatch_retry(job: Job) -> None:
         elif job.job_type == "render_preview":
             from app.tasks.render import render_preview_task
             render_preview_task.delay(job.target_id)
+        elif job.job_type == "parse_mineru":
+            from app.tasks.mineru import parse_mineru_task
+            parse_mineru_task.delay(job.target_id)
+        elif job.job_type == "analyze_visual":
+            from app.tasks.ai import analyze_visual_task
+            analyze_visual_task.delay(job.target_id)
+        elif job.job_type == "build_embedding":
+            from app.tasks.ai import build_embedding_task
+            build_embedding_task.delay(job.target_id)
     except Exception:
         # If broker unavailable, the job stays pending; worker will pick up if re-enqueued elsewhere
         pass

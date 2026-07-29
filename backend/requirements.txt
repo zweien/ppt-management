@@ -36,6 +36,9 @@ jieba==0.42.1
 # HTTP client for model calls (OpenAI compatible)
 httpx==0.28.1
 
+# Image handling (vision scaling, ADR-0007)
+Pillow==11.0.0
+
 # Testing
 pytest==8.3.4
 pytest-asyncio==0.25.0
