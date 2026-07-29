@@ -166,7 +166,7 @@ export default function SearchPage() {
                 </button>
               ))}
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 flex-wrap justify-end">
               <Checkbox checked={favoriteOnly} onChange={(e) => setFavoriteOnly(e.target.checked)} label="仅看收藏" />
               <Checkbox
                 checked={includeHistorical}

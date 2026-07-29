@@ -16,7 +16,7 @@ export const Checkbox = forwardRef<HTMLInputElement, CheckboxProps>(function Che
   ref,
 ) {
   return (
-    <label className={cn("inline-flex items-center gap-1.5 cursor-pointer select-none text-sm text-body h-7", className)}>
+    <label className={cn("inline-flex items-center gap-1.5 shrink-0 cursor-pointer select-none text-sm text-body h-7", className)}>
       <input
         ref={ref}
         type="checkbox"
@@ -27,7 +27,7 @@ export const Checkbox = forwardRef<HTMLInputElement, CheckboxProps>(function Che
         )}
         {...rest}
       />
-      {label != null && <span className="leading-none">{label}</span>}
+      {label != null && <span className="leading-none whitespace-nowrap">{label}</span>}
     </label>
   );
 });
