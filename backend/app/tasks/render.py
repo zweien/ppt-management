@@ -87,23 +87,40 @@ def _libreoffice_to_pdf(pptx_path: str, out_dir: str) -> str:
     return pdf_path
 
 
+def _magick_resize(src: Path, dst: Path, width: str) -> bool:
+    """Resize image with ImageMagick. Return False if convert is missing or fails
+    (caller should fall back to the source)."""
+    try:
+        rc, _, _ = _run(["convert", str(src), "-resize", f"{width}x>", str(dst)],
+                        timeout=60)
+    except FileNotFoundError:
+        return False
+    return rc == 0 and dst.exists()
+
+
 def _pdf_to_images(pdf_path: str, out_dir: str, page_count: int) -> list[tuple[str, str]]:
-    """Render each PDF page to PNG (1920 wide) + WebP thumb (480 wide)."""
-    # Use pdftoppm (poppler-utils)
+    """Render each PDF page to PNG (~1920 wide) + WebP thumb (480 wide).
+
+    pdftoppm renders at 200 DPI (≈2666px wide for 13.33" widescreen); ImageMagick
+    then downscales to 1920 wide to normalize size and cap storage cost. If
+    ImageMagick is unavailable, the raw pdftoppm output is kept as a fallback.
+    """
     prefix = os.path.join(out_dir, "slide")
-    cmd = ["pdftoppm", "-png", "-r", "150", pdf_path, prefix]
+    cmd = ["pdftoppm", "-png", "-r", "200", pdf_path, prefix]
     rc, out, err = _run(cmd, timeout=300)
     if rc != 0:
         raise RuntimeError(f"pdftoppm failed: {err.strip()[:300]}")
     pairs = []
     png_files = sorted(Path(out_dir).glob("slide-*.png"))
     for i, png in enumerate(png_files, start=1):
-        # Downscale high-res PNG to ~1920 wide using ImageMagick if available, else keep
-        hi = png
-        # Thumbnail via pdftoppm second pass at lower res OR imagemagick
+        # Downscale high-res PNG to ~1920 wide; fall back to raw pdftoppm output
+        hi = png.with_name(f"hi-{i:04d}.png")
+        if not _magick_resize(png, hi, "1920"):
+            hi = png
+        # Thumbnail (480 wide)
         thumb = png.with_name(f"thumb-{i:04d}.png")
-        magick_rc, _, _ = _run(["convert", str(png), "-resize", "480x>",
-                                str(thumb)], timeout=60)
+        if not _magick_resize(png, thumb, "480"):
+            thumb = png
         pairs.append((str(hi), str(thumb)))
     return pairs
 
