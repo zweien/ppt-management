@@ -11,6 +11,7 @@ from app.core.storage import get_storage
 from app.db.session import get_db
 from app.models import Presentation, PresentationVersion, Slide, Tag, User
 from app.schemas.presentation import SlideOut
+from app.services.favorites import favorite_slide_ids
 from app.services.hybrid_search import hybrid_search
 
 router = APIRouter(prefix="/api/search", tags=["search"])
@@ -57,12 +58,14 @@ def search_slides(
     page_hits = hits[start:start + page_size]
 
     out = []
+    fav_ids = favorite_slide_ids(db, user.id, [h.slide.id for h in page_hits])
     for h in page_hits:
         s = h.slide
         prev = storage.presigned_get_url(s.preview_object_key) if s.preview_object_key else None
         thumb = storage.presigned_get_url(s.thumbnail_object_key) if s.thumbnail_object_key else None
         slide_out = SlideOut.from_model(s, preview_url=prev, thumbnail_url=thumb,
-                                        presentation_title=h.presentation_title)
+                                        presentation_title=h.presentation_title,
+                                        is_favorite=s.id in fav_ids)
         out.append(HitReasonOut(slide=slide_out, score=round(h.score, 4),
                                 hit_reasons=h.hit_reasons))
     return out

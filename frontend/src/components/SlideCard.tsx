@@ -9,15 +9,19 @@ export interface SlideCardData {
   native_text: string | null;
   thumbnail_url: string | null;
   presentation_title?: string | null;
+  is_favorite?: boolean;
 }
 
 export default function SlideCard({
   slide,
   onOpen,
+  onToggleFavorite,
 }: {
   slide: SlideCardData;
   onOpen?: (slide: SlideCardData) => void;
+  onToggleFavorite?: (slide: SlideCardData) => void;
 }) {
+  const fav = !!slide.is_favorite;
   return (
     <button
       type="button"
@@ -28,12 +32,31 @@ export default function SlideCard({
       }`}
     >
       {/* 缩略图:固定宽高比,不随内容伸缩 */}
-      <div className="aspect-video bg-gray-100 flex items-center justify-center overflow-hidden shrink-0 w-full">
+      <div className="relative aspect-video bg-gray-100 flex items-center justify-center overflow-hidden shrink-0 w-full">
         {slide.thumbnail_url ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={slide.thumbnail_url} alt={`第${slide.page_no}页`} className="w-full h-full object-contain max-w-full" />
         ) : (
           <span className="text-gray-300 text-sm">无预览</span>
+        )}
+        {onToggleFavorite && (
+          <span
+            role="button"
+            aria-label={fav ? "取消收藏" : "收藏"}
+            title={fav ? "取消收藏" : "收藏"}
+            onClick={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              onToggleFavorite(slide);
+            }}
+            className={`absolute top-1.5 right-1.5 w-7 h-7 flex items-center justify-center rounded-full text-base leading-none transition ${
+              fav
+                ? "bg-yellow-400 text-white opacity-100"
+                : "bg-white/80 text-gray-400 hover:bg-white hover:text-yellow-500 opacity-0 group-hover:opacity-100"
+            }`}
+          >
+            ★
+          </span>
         )}
       </div>
       {/* 文字区:固定高度,内容截断,保证所有卡片等高 */}

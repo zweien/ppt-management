@@ -19,16 +19,19 @@ interface SlideDetail {
   content_json: any;
   mineru_markdown?: string | null;
   user_note?: string | null;
+  is_favorite?: boolean;
 }
 
 export default function SlideDetailDrawer({
   slide,
   onClose,
   onMsg,
+  onToggleFavorite,
 }: {
   slide: SlideCardData | null;
   onClose: () => void;
   onMsg?: (m: string) => void;
+  onToggleFavorite?: (slideId: string, isFav: boolean) => void;
 }) {
   const [detail, setDetail] = useState<SlideDetail | null>(null);
   const [aiTags, setAiTags] = useState<{ id: string; tag: { name: string; category: string | null }; origin: string }[]>([]);
@@ -40,6 +43,8 @@ export default function SlideDetailDrawer({
   const [noteDraft, setNoteDraft] = useState("");
   const [savingNote, setSavingNote] = useState(false);
   const [noteEditing, setNoteEditing] = useState(false);
+  const [fav, setFav] = useState(false);
+  const [togglingFav, setTogglingFav] = useState(false);
 
   useEffect(() => {
     if (!slide) {
@@ -63,6 +68,7 @@ export default function SlideDetailDrawer({
           setAiTags(tags.filter((t) => t.origin === "ai"));
           setNoteDraft(d.user_note || "");
           setNoteEditing(false);
+          setFav(!!d.is_favorite);
         }
       } catch (e) {
         if (!cancelled) onMsg?.(e instanceof ApiError ? e.message : "加载详情失败");
@@ -136,6 +142,28 @@ export default function SlideDetailDrawer({
     }
   }
 
+  async function toggleFavorite() {
+    if (!slide) return;
+    setTogglingFav(true);
+    const target = !fav;
+    try {
+      if (target) {
+        await api.post("/api/favorites", { slide_ids: [slide.id] });
+        onMsg?.("已收藏");
+      } else {
+        await api.delete(`/api/favorites/${slide.id}`);
+        onMsg?.("已取消收藏");
+      }
+      setFav(target);
+      setDetail((d) => (d ? { ...d, is_favorite: target } : d));
+      onToggleFavorite?.(slide.id, target);
+    } catch (e) {
+      onMsg?.(e instanceof ApiError ? e.message : "操作失败");
+    } finally {
+      setTogglingFav(false);
+    }
+  }
+
   return (
     <div className="fixed inset-0 z-40 flex justify-end">
       <div className="absolute inset-0 bg-black/30" onClick={onClose} />
@@ -147,7 +175,21 @@ export default function SlideDetailDrawer({
             </div>
             <div className="font-medium text-gray-800">{slide.title || detail?.title || "(无标题)"}</div>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl">✕</button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={toggleFavorite}
+              disabled={togglingFav}
+              title={fav ? "取消收藏" : "收藏"}
+              className={`px-2.5 py-1 rounded-lg text-sm border transition disabled:opacity-50 ${
+                fav
+                  ? "bg-yellow-400 text-white border-yellow-400 hover:bg-yellow-500"
+                  : "border-gray-200 text-gray-500 hover:border-yellow-300 hover:text-yellow-600"
+              }`}
+            >
+              {fav ? "★ 已收藏" : "☆ 收藏"}
+            </button>
+            <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl">✕</button>
+          </div>
         </div>
 
         <div className="p-6 space-y-4">

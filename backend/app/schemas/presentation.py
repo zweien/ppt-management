@@ -45,6 +45,7 @@ class SlideOut(BaseModel):
     preview_url: Optional[str] = None
     thumbnail_url: Optional[str] = None
     presentation_title: Optional[str] = None
+    is_favorite: bool = False
 
     @classmethod
     def from_model(
@@ -53,6 +54,7 @@ class SlideOut(BaseModel):
         preview_url: str | None = None,
         thumbnail_url: str | None = None,
         presentation_title: str | None = None,
+        is_favorite: bool = False,
     ) -> "SlideOut":
         return cls(
             id=s.id,
@@ -71,6 +73,7 @@ class SlideOut(BaseModel):
             preview_url=preview_url,
             thumbnail_url=thumbnail_url,
             presentation_title=presentation_title,
+            is_favorite=is_favorite,
         )
 
 

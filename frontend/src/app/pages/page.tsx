@@ -70,11 +70,36 @@ export default function PagesPage() {
     try {
       await api.post(`/api/favorites`, { slide_ids: [...selected] });
       setMsg(`已收藏 ${selected.size} 个页面`);
+      const sel = selected;
+      setSlides((prev) => prev.map((s) => (sel.has(s.id) ? { ...s, is_favorite: true } : s)));
       setSelected(new Set());
       setSelectMode(false);
     } catch (e) {
       setMsg(e instanceof ApiError ? e.message : "操作失败");
     }
+  }
+
+  // 单页收藏切换(卡片星标 / 抽屉按钮)
+  async function toggleFavorite(slide: SlideCardData) {
+    const target = !slide.is_favorite;
+    setSlides((prev) => prev.map((s) => (s.id === slide.id ? { ...s, is_favorite: target } : s)));
+    try {
+      if (target) {
+        await api.post(`/api/favorites`, { slide_ids: [slide.id] });
+        setMsg("已收藏");
+      } else {
+        await api.delete(`/api/favorites/${slide.id}`);
+        setMsg("已取消收藏");
+      }
+    } catch (e) {
+      // 回滚
+      setSlides((prev) => prev.map((s) => (s.id === slide.id ? { ...s, is_favorite: !target } : s)));
+      setMsg(e instanceof ApiError ? e.message : "操作失败");
+    }
+  }
+
+  function onDrawerToggleFav(slideId: string, isFav: boolean) {
+    setSlides((prev) => prev.map((s) => (s.id === slideId ? { ...s, is_favorite: isFav } : s)));
   }
 
   return (
@@ -143,7 +168,11 @@ export default function PagesPage() {
                   />
                 )}
                 <div className={selected.has(s.id) ? "ring-2 ring-brand-400 rounded-xl" : ""}>
-                  <SlideCard slide={s} onOpen={selectMode ? undefined : setActive} />
+                  <SlideCard
+                    slide={s}
+                    onOpen={selectMode ? undefined : setActive}
+                    onToggleFavorite={selectMode ? undefined : toggleFavorite}
+                  />
                 </div>
               </div>
             ))}
@@ -151,7 +180,7 @@ export default function PagesPage() {
         )}
       </div>
 
-      <SlideDetailDrawer slide={active} onClose={() => setActive(null)} onMsg={setMsg} />
+      <SlideDetailDrawer slide={active} onClose={() => setActive(null)} onMsg={setMsg} onToggleFavorite={onDrawerToggleFav} />
     </AppShell>
   );
 }

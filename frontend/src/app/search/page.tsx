@@ -13,6 +13,7 @@ interface SlideCardData {
   native_text: string | null;
   thumbnail_url: string | null;
   presentation_title?: string | null;
+  is_favorite?: boolean;
 }
 interface HitResult {
   slide: SlideCardData;
@@ -89,6 +90,32 @@ export default function SearchPage() {
 
   function toggleTag(id: string) {
     setSelectedTags((prev) => (prev.includes(id) ? prev.filter((t) => t !== id) : [...prev, id]));
+  }
+
+  async function toggleFavorite(slide: SlideCardData) {
+    const target = !slide.is_favorite;
+    setResults((prev) =>
+      prev.map((h) => (h.slide.id === slide.id ? { ...h, slide: { ...h.slide, is_favorite: target } } : h))
+    );
+    try {
+      if (target) {
+        await api.post(`/api/favorites`, { slide_ids: [slide.id] });
+      } else {
+        await api.delete(`/api/favorites/${slide.id}`);
+      }
+    } catch (e) {
+      // 回滚
+      setResults((prev) =>
+        prev.map((h) => (h.slide.id === slide.id ? { ...h, slide: { ...h.slide, is_favorite: !target } } : h))
+      );
+      setMsg(e instanceof ApiError ? e.message : "操作失败");
+    }
+  }
+
+  function onDrawerToggleFav(slideId: string, isFav: boolean) {
+    setResults((prev) =>
+      prev.map((h) => (h.slide.id === slideId ? { ...h, slide: { ...h.slide, is_favorite: isFav } } : h))
+    );
   }
 
   const facetsByCategory = facets.reduce<Record<string, TagFacet[]>>((acc, f) => {
@@ -186,7 +213,7 @@ export default function SearchPage() {
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
             {results.map((h) => (
               <div key={h.slide.id} className="relative">
-                <SlideCard slide={h.slide} onOpen={setActive} />
+                <SlideCard slide={h.slide} onOpen={setActive} onToggleFavorite={toggleFavorite} />
                 {h.hit_reasons.length > 0 && (
                   <div className="absolute top-2 left-2 flex flex-wrap gap-1">
                     {h.hit_reasons.slice(0, 2).map((r) => (
@@ -232,7 +259,7 @@ export default function SearchPage() {
         )}
       </div>
 
-      <SlideDetailDrawer slide={active} onClose={() => setActive(null)} onMsg={setMsg} />
+      <SlideDetailDrawer slide={active} onClose={() => setActive(null)} onMsg={setMsg} onToggleFavorite={onDrawerToggleFav} />
     </AppShell>
   );
 }

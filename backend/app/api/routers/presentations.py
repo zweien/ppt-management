@@ -16,6 +16,7 @@ from app.schemas.presentation import (
     SlideOut,
     VersionOut,
 )
+from app.services.favorites import favorite_slide_ids, is_favorite
 from app.services.jobs import find_or_create_job
 
 router = APIRouter(prefix="/api", tags=["presentations"])
@@ -167,10 +168,12 @@ def browse_pages(
         .all()
     )
     out = []
+    fav_ids = favorite_slide_ids(db, user.id, [s.id for s, _ in rows])
     for s, pres_title in rows:
         prev = storage.presigned_get_url(s.preview_object_key) if s.preview_object_key else None
         thumb = storage.presigned_get_url(s.thumbnail_object_key) if s.thumbnail_object_key else None
-        out.append(SlideOut.from_model(s, preview_url=prev, thumbnail_url=thumb, presentation_title=pres_title))
+        out.append(SlideOut.from_model(s, preview_url=prev, thumbnail_url=thumb,
+                                       presentation_title=pres_title, is_favorite=s.id in fav_ids))
     return out
 
 
@@ -195,10 +198,12 @@ def list_slides(
         .all()
     )
     out = []
+    fav_ids = favorite_slide_ids(db, user.id, [s.id for s in slides])
     for s in slides:
         prev_url = storage.presigned_get_url(s.preview_object_key) if s.preview_object_key else None
         thumb_url = storage.presigned_get_url(s.thumbnail_object_key) if s.thumbnail_object_key else None
-        out.append(SlideOut.from_model(s, preview_url=prev_url, thumbnail_url=thumb_url, presentation_title=pres.title))
+        out.append(SlideOut.from_model(s, preview_url=prev_url, thumbnail_url=thumb_url,
+                                       presentation_title=pres.title, is_favorite=s.id in fav_ids))
     return out
 
 
@@ -222,6 +227,7 @@ def get_slide(slide_id: str, db: Session = Depends(get_db),
         preview_url=prev_url, thumbnail_url=thumb_url,
         content_json=s.content_json, presentation_title=pres.title if pres else None,
         mineru_markdown=s.mineru_markdown,
+        is_favorite=is_favorite(db, user.id, s.id),
     )
 
 
