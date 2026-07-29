@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ListChecks, RefreshCw, ChevronRight, AlertCircle } from "lucide-react";
+import Link from "next/link";
+import { ListChecks, RefreshCw, ChevronRight, AlertCircle, ExternalLink } from "lucide-react";
 import AppShell from "@/components/AppShell";
 import { api, ApiError } from "@/lib/api";
 import {
@@ -32,6 +33,7 @@ interface Job {
   created_at: string;
   target_name?: string | null;
   target_parent_name?: string | null;
+  target_parent_id?: string | null;
   target_page_no?: number | null;
 }
 
@@ -177,20 +179,33 @@ export default function JobsPage() {
                       {new Date(j.created_at).toLocaleString("zh-CN")}
                     </TD>
                     <TD className="text-right">
-                      {j.status === "failed" && (
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          loading={retrying === j.id}
-                          leadingIcon={<RefreshCw className="w-3.5 h-3.5" />}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            retry(j.id);
-                          }}
-                        >
-                          重试
-                        </Button>
-                      )}
+                      <div className="inline-flex items-center gap-1 justify-end">
+                        {j.target_parent_id && (
+                          <Link
+                            href={`/files/${j.target_parent_id}`}
+                            onClick={(e) => e.stopPropagation()}
+                            className="inline-flex items-center gap-1 text-xs text-link hover:link-deep px-1.5 py-1"
+                            title="查看对象"
+                          >
+                            <ExternalLink className="w-3.5 h-3.5" />
+                            查看
+                          </Link>
+                        )}
+                        {j.status === "failed" && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            loading={retrying === j.id}
+                            leadingIcon={<RefreshCw className="w-3.5 h-3.5" />}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              retry(j.id);
+                            }}
+                          >
+                            重试
+                          </Button>
+                        )}
+                      </div>
                     </TD>
                   </TR>
                   {isOpen && (

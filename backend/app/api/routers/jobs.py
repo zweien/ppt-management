@@ -23,6 +23,7 @@ def _to_jobout(
     maps. When maps are None the three target_* fields fall back to None."""
     target_name: str | None = None
     target_parent_name: str | None = None
+    target_parent_id: str | None = None
     target_page_no: int | None = None
 
     if j.target_type == "version" and version_map is not None:
@@ -33,6 +34,7 @@ def _to_jobout(
                 p = pres_map.get(v.presentation_id)
                 if p is not None:
                     target_parent_name = p.title
+                    target_parent_id = p.id
     elif j.target_type == "slide" and slide_map is not None:
         s = slide_map.get(j.target_id)
         if s is not None:
@@ -44,6 +46,7 @@ def _to_jobout(
                     p = pres_map.get(v.presentation_id)
                     if p is not None:
                         target_parent_name = p.title
+                        target_parent_id = p.id
 
     return JobOut(
         id=j.id, job_type=j.job_type, target_type=j.target_type, target_id=j.target_id,
@@ -51,7 +54,7 @@ def _to_jobout(
         error_message=j.error_message, stage=j.stage, started_at=j.started_at,
         finished_at=j.finished_at, created_at=j.created_at,
         target_name=target_name, target_parent_name=target_parent_name,
-        target_page_no=target_page_no,
+        target_parent_id=target_parent_id, target_page_no=target_page_no,
     )
 
 

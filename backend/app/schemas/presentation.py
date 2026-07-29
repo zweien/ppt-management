@@ -98,6 +98,7 @@ class JobOut(BaseModel):
     # Resolved target display info (joined for the jobs table, N+1-safe).
     target_name: Optional[str] = None  # version→original_filename; slide→title
     target_parent_name: Optional[str] = None  # owning Presentation.title
+    target_parent_id: Optional[str] = None  # owning Presentation.id (for deep links)
     target_page_no: Optional[int] = None  # slide tasks only
 
 
