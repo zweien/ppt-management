@@ -72,7 +72,7 @@ export default function AppShell({ children, title }: { children: React.ReactNod
 
   return (
     <div className="min-h-screen flex bg-canvas-soft">
-      <aside className="w-64 shrink-0 bg-canvas border-r border-hairline flex flex-col">
+      <aside className="w-64 shrink-0 bg-canvas border-r border-hairline flex flex-col sticky top-0 h-screen">
         {/* Brand */}
         <div className="px-5 h-16 flex items-center gap-2.5 border-b border-hairline">
           <span className="w-7 h-7 rounded-sm bg-mesh border border-hairline shrink-0" />
