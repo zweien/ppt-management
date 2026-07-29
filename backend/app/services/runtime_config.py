@@ -103,3 +103,50 @@ def get_cors_origins() -> list[str]:
     """CORS 仅启动时读一次(中间件),动态改需重启。这里仍提供以便设置页展示。"""
     val = get_setting("CORS_ORIGINS", settings.CORS_ORIGINS)
     return list(val) if isinstance(val, (list, tuple)) else [str(val)]
+
+
+# --- UI 配置(品牌 / 外观) ---
+
+def get_app_name() -> str:
+    return str(get_setting("APP_DISPLAY_NAME", settings.APP_NAME))
+
+
+def get_mesh_enabled() -> bool:
+    return bool(get_setting("MESH_ENABLED", True))
+
+
+def get_default_theme() -> str:
+    val = str(get_setting("DEFAULT_THEME", "light"))
+    return val if val in ("light", "dark") else "light"
+
+
+def get_logo_object_key() -> str | None:
+    """返回当前 logo 的 MinIO object key,未上传时 None。不走缓存(低频且需即时反映)。"""
+    db = SessionLocal()
+    try:
+        row = db.get(AppSetting, "LOGO_OBJECT_KEY")
+        return str(row.value).strip('"') if row and row.value else None
+    except Exception:
+        return None
+    finally:
+        db.close()
+
+
+def set_logo_object_key(key: str | None) -> None:
+    """记录 logo object key(None 表示移除 logo)。"""
+    db = SessionLocal()
+    try:
+        if key is None:
+            row = db.get(AppSetting, "LOGO_OBJECT_KEY")
+            if row:
+                db.delete(row)
+        else:
+            row = db.get(AppSetting, "LOGO_OBJECT_KEY")
+            if row:
+                row.value = json.dumps(key)
+            else:
+                db.add(AppSetting(key="LOGO_OBJECT_KEY", value=json.dumps(key)))
+        db.commit()
+    finally:
+        db.close()
+

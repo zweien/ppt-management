@@ -2,7 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import type { ReactNode } from "react";
-// (mounted state intentionally unused after cleanup)
+import { fetchUiConfig } from "@/lib/version";
 
 /**
  * Lightweight theme provider — avoids next-themes' inline-script approach
@@ -30,9 +30,24 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setThemeState] = useState<Theme>("light");
 
   useEffect(() => {
-    // Apply persisted theme on mount (client-only, post-hydration).
+    // Apply theme on mount (client-only, post-hydration).
+    // 优先用用户已选(localStorage);未选时 fallback 到配置的默认主题。
+    const hasStored = typeof window !== "undefined" && localStorage.getItem(STORAGE_KEY) !== null;
     const stored = (typeof window !== "undefined" && localStorage.getItem(STORAGE_KEY)) as Theme | null;
-    const initial: Theme = stored === "dark" ? "dark" : "light";
+    let initial: Theme = stored === "dark" ? "dark" : "light";
+    if (!hasStored) {
+      // 异步拉配置默认主题;首次渲染先用 light 避免 flash,拿到后再调整。
+      fetchUiConfig().then((c) => {
+        const cfg = c.default_theme === "dark" ? "dark" : "light";
+        // 仅当用户仍未手动选择时才应用配置默认值。
+        if (localStorage.getItem(STORAGE_KEY) === null && cfg !== initial) {
+          initial = cfg;
+          setThemeState(cfg);
+          document.documentElement.classList.toggle("dark", cfg === "dark");
+          document.documentElement.style.colorScheme = cfg;
+        }
+      });
+    }
     setThemeState(initial);
     document.documentElement.classList.toggle("dark", initial === "dark");
     document.documentElement.style.colorScheme = initial;

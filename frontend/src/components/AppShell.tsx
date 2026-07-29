@@ -15,7 +15,7 @@ import {
   LogOut,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
-import { fetchVersion } from "@/lib/version";
+import { API_BASE, fetchUiConfig, fetchVersion } from "@/lib/version";
 import ThemeToggle from "./ThemeToggle";
 
 // Grouped navigation — Vercel-style IA (eyebrow section labels).
@@ -50,6 +50,8 @@ export default function AppShell({ children, title }: { children: React.ReactNod
   const pathname = usePathname();
   const [user, setUser] = useState<{ username: string; is_superuser?: boolean } | null>(null);
   const [version, setVersion] = useState("");
+  const [appName, setAppName] = useState("PPT 素材库");
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
 
   useEffect(() => {
     const raw = localStorage.getItem("user");
@@ -60,7 +62,16 @@ export default function AppShell({ children, title }: { children: React.ReactNod
     }
     if (raw) setUser(JSON.parse(raw));
     fetchVersion().then(setVersion);
+    fetchUiConfig().then((c) => {
+      setAppName(c.app_name);
+      setLogoUrl(c.logo_url);
+    });
   }, [router]);
+
+  // 同步浏览器标题为系统名称(layout 是 server component 无法读配置,这里兜底)。
+  useEffect(() => {
+    if (appName) document.title = appName;
+  }, [appName]);
 
   // 拼装最终导航:管理员在系统组加「设置」。
   const navGroups = user?.is_superuser
@@ -84,8 +95,18 @@ export default function AppShell({ children, title }: { children: React.ReactNod
       <aside className="w-64 shrink-0 bg-canvas border-r border-hairline flex flex-col sticky top-0 h-screen">
         {/* Brand */}
         <div className="px-5 h-16 flex items-center gap-2.5 border-b border-hairline">
-          <span className="w-7 h-7 rounded-sm bg-mesh border border-hairline shrink-0" />
-          <span className="font-semibold text-ink tracking-tight tracking-display2">PPT 素材库</span>
+          {logoUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={`${API_BASE}${logoUrl}`}
+              alt={appName}
+              className="w-7 h-7 rounded-sm object-contain shrink-0"
+              onError={() => setLogoUrl(null)}
+            />
+          ) : (
+            <span className="w-7 h-7 rounded-sm bg-mesh border border-hairline shrink-0" />
+          )}
+          <span className="font-semibold text-ink tracking-tight tracking-display2 truncate">{appName}</span>
         </div>
 
         {/* Grouped nav */}

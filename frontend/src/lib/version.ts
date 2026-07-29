@@ -16,9 +16,17 @@ export interface UploadLimits {
   allowed_extensions: string[];
 }
 
+export interface UiConfig {
+  app_name: string;
+  logo_url: string | null;
+  mesh_enabled: boolean;
+  default_theme: "light" | "dark";
+}
+
 interface RootPayload {
   version: string;
   upload_limits?: UploadLimits;
+  ui_config?: UiConfig;
 }
 
 async function fetchRoot(): Promise<RootPayload | null> {
@@ -75,6 +83,27 @@ export async function fetchUploadLimits(
 ): Promise<UploadLimits> {
   const payload = await fetchRoot();
   return payload?.upload_limits || fallback;
+}
+
+/** 获取 UI 配置(系统名称/logo/mesh开关/默认主题),复用 GET / 缓存。 */
+export async function fetchUiConfig(
+  fallback: UiConfig = {
+    app_name: "PPT 素材库",
+    logo_url: null,
+    mesh_enabled: true,
+    default_theme: "light",
+  },
+): Promise<UiConfig> {
+  const payload = await fetchRoot();
+  return payload?.ui_config || fallback;
+}
+
+/** 强制刷新 GET / 缓存(配置改动后调用)。 */
+export async function refreshRoot(): Promise<void> {
+  if (typeof window !== "undefined") {
+    localStorage.removeItem(VERSION_CACHE_TS_KEY);
+  }
+  await fetchRoot();
 }
 
 // --- CHANGELOG 结构化数据 ---

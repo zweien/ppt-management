@@ -95,3 +95,8 @@ def slide_preview_key(presentation_id: str, version_id: str, page_no: int) -> st
 
 def slide_thumb_key(presentation_id: str, version_id: str, page_no: int) -> str:
     return f"presentations/{presentation_id}/versions/{version_id}/slides/{page_no:04d}-thumb.webp"
+
+
+def ui_logo_key(ext: str = "png") -> str:
+    """品牌 logo 对象 key(UI 配置)。"""
+    return f"ui/logo.{ext.lstrip('.')}"

@@ -52,7 +52,14 @@ def create_app() -> FastAPI:
 
     @app.get("/")
     def root() -> dict:
-        from app.services.runtime_config import get_upload_extensions, get_upload_max_size_mb
+        from app.services.runtime_config import (
+            get_app_name,
+            get_default_theme,
+            get_mesh_enabled,
+            get_logo_object_key,
+            get_upload_extensions,
+            get_upload_max_size_mb,
+        )
         return {
             "app": settings.APP_NAME,
             "version": settings.APP_VERSION,
@@ -60,6 +67,12 @@ def create_app() -> FastAPI:
             "upload_limits": {
                 "max_size_mb": get_upload_max_size_mb(),
                 "allowed_extensions": get_upload_extensions(),
+            },
+            "ui_config": {
+                "app_name": get_app_name(),
+                "logo_url": "/api/settings/logo" if get_logo_object_key() else None,
+                "mesh_enabled": get_mesh_enabled(),
+                "default_theme": get_default_theme(),
             },
         }
 
