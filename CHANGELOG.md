@@ -5,6 +5,19 @@
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-07-30
+
+本版聚焦:UI 配置(品牌定制)+ 多格式上传(.ppt/.pdf)。
+
+### ✨ 新功能
+
+- **UI 配置(品牌定制)**:设置页「界面」Tab — logo 上传(MinIO 存储,代理流式返回,无需认证)、系统名称(侧边栏/登录/首页/浏览器标题联动)、mesh 渐变开关、默认主题。`GET /` 加 `ui_config`;ThemeProvider 在用户未选主题时 fallback 配置默认值 (`e493847`)
+- **支持 .ppt / .pdf 格式**:走「渲染 + OCR」路径(LibreOffice 渲染 + MinerU OCR 提取文字),`.pptx` 保持高保真 OpenXML 解析。`PresentationVersion.source_format` + `detect_format`(magic bytes)+ render_preview 内建空 slide 行 + 单页导出门控(非 pptx 隐藏) (`e3efb7e`)
+
+### 🐛 修复
+
+- 上传去重(dedup)未排除已软删除版本:重复上传已删文件会命中软删 version,现 join `Presentation.deleted_at.is_(None)` (`e3efb7e`)
+
 ## [0.5.0] - 2026-07-30
 
 本版聚焦:上传体验优化 + 管理员设置页(配置全量 DB 化)。

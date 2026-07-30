@@ -122,6 +122,23 @@ export const CHANGELOG: ChangelogEntry[] = [
     sections: [],
   },
   {
+    version: "0.6.0",
+    date: "2026-07-30",
+    sections: [
+      {
+        kind: "✨ 新功能",
+        items: [
+          "UI 配置(品牌定制):设置页「界面」Tab — logo 上传(MinIO 代理流式返回)、系统名称(全站联动)、mesh 渐变开关、默认主题",
+          "支持 .ppt / .pdf 格式:渲染 + OCR 路径(LibreOffice + MinerU),pptx 保持原生解析;source_format + detect_format + 单页导出门控",
+        ],
+      },
+      {
+        kind: "🐛 修复",
+        items: ["上传去重未排除已软删除版本(join Presentation.deleted_at)"],
+      },
+    ],
+  },
+  {
     version: "0.5.0",
     date: "2026-07-30",
     sections: [
