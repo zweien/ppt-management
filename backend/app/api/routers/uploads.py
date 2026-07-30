@@ -18,6 +18,7 @@ def _version_out(v: PresentationVersion) -> VersionOut:
         id=v.id, presentation_id=v.presentation_id, version_no=v.version_no,
         sha256=v.sha256, page_count=v.page_count, status=v.status,
         file_size=v.file_size, original_filename=v.original_filename, created_at=v.created_at,
+        source_format=getattr(v, "source_format", "pptx") or "pptx",
     )
 
 

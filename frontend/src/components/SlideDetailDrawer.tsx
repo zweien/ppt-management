@@ -25,6 +25,7 @@ interface SlideDetail {
   mineru_markdown?: string | null;
   user_note?: string | null;
   is_favorite?: boolean;
+  source_format?: string;
 }
 
 interface SlideTagRow {
@@ -289,16 +290,23 @@ export default function SlideDetailDrawer({
                 <Button size="sm" variant="secondary" leadingIcon={<Copy className="w-3.5 h-3.5" />} onClick={() => copyText(detail)}>
                   复制文字
                 </Button>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  leadingIcon={<FileDown className="w-3.5 h-3.5" />}
-                  onClick={exportSingleSlide}
-                  loading={exporting}
-                  title="复制源 PPTX 目标页及依赖,生成仅含该页的可编辑 PPTX"
-                >
-                  导出单页 PPTX
-                </Button>
+                {detail?.source_format !== "ppt" && detail?.source_format !== "pdf" && (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    leadingIcon={<FileDown className="w-3.5 h-3.5" />}
+                    onClick={exportSingleSlide}
+                    loading={exporting}
+                    title="复制源 PPTX 目标页及依赖,生成仅含该页的可编辑 PPTX"
+                  >
+                    导出单页 PPTX
+                  </Button>
+                )}
+                {(detail?.source_format === "ppt" || detail?.source_format === "pdf") && (
+                  <span className="text-xs text-mute self-center" title="单页 PPTX 导出仅支持 .pptx 源">
+                    单页导出仅支持 .pptx
+                  </span>
+                )}
               </div>
 
               {/* Tabs */}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Save, AlertTriangle, UploadCloud, Trash2 } from "lucide-react";
 import AppShell from "@/components/AppShell";
 import ModelConfigSection from "@/components/ModelConfigSection";
@@ -241,6 +241,7 @@ function LogoSection({ onChanged }: { onChanged: () => Promise<void> | void }) {
   const toast = useToast();
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
 
   async function refreshLogo() {
     // 拉最新 ui_config 看 logo_url 是否存在(避免浏览器缓存用时间戳)
@@ -297,21 +298,26 @@ function LogoSection({ onChanged }: { onChanged: () => Promise<void> | void }) {
           )}
         </div>
         <div className="flex gap-2">
-          <label>
-            <Button variant="primary" size="md" leadingIcon={<UploadCloud className="w-3.5 h-3.5" />} loading={busy}>
-              上传 logo
-            </Button>
-            <input
-              type="file"
-              accept="image/png,image/jpeg,image/webp,image/svg+xml,image/gif"
-              className="hidden"
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) upload(f);
-                if (e.target) e.target.value = "";
-              }}
-            />
-          </label>
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/svg+xml,image/gif"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) upload(f);
+              if (e.target) e.target.value = "";
+            }}
+          />
+          <Button
+            variant="primary"
+            size="md"
+            leadingIcon={<UploadCloud className="w-3.5 h-3.5" />}
+            loading={busy}
+            onClick={() => fileRef.current?.click()}
+          >
+            上传 logo
+          </Button>
           {logoUrl && (
             <Button variant="ghost" size="md" leadingIcon={<Trash2 className="w-3.5 h-3.5" />} disabled={busy} onClick={remove}>
               移除

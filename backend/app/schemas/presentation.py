@@ -15,6 +15,7 @@ class VersionOut(BaseModel):
     file_size: int
     original_filename: str
     created_at: datetime
+    source_format: str = "pptx"
 
 
 class PresentationOut(BaseModel):
@@ -83,6 +84,7 @@ class SlideOut(BaseModel):
 class SlideDetail(SlideOut):
     content_json: Optional[dict[str, Any]] = None
     mineru_markdown: Optional[str] = None
+    source_format: str = "pptx"
 
 
 class JobOut(BaseModel):

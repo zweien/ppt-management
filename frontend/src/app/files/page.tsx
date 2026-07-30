@@ -149,7 +149,7 @@ export default function FilesPage() {
             <input
               ref={fileRef}
               type="file"
-              accept=".pptx"
+              accept=".pptx,.ppt,.pdf"
               multiple
               className="hidden"
               onChange={(e) => {
@@ -158,7 +158,7 @@ export default function FilesPage() {
               }}
             />
           </div>
-          <p className="text-xs text-mute mt-3">仅支持 .pptx(不支持 .ppt / 加密文件)。完全相同文件将提示重复。</p>
+          <p className="text-xs text-mute mt-3">支持 .pptx / .ppt / .pdf(ppt 与 pdf 通过渲染 + OCR 处理,单页 PPTX 导出仅限 .pptx)。完全相同文件将提示重复。</p>
         </div>
 
         {/* List header */}

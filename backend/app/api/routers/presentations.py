@@ -82,6 +82,7 @@ def _presentation_to_out(
             id=v.id, presentation_id=v.presentation_id, version_no=v.version_no,
             sha256=v.sha256, page_count=v.page_count, status=v.status,
             file_size=v.file_size, original_filename=v.original_filename, created_at=v.created_at,
+            source_format=getattr(v, "source_format", "pptx") or "pptx",
         ) for v in versions],
         current_status=cur_status,
         parse_progress=parse_progress,
@@ -287,6 +288,7 @@ def get_slide(slide_id: str, db: Session = Depends(get_db),
         content_json=s.content_json, presentation_title=pres.title if pres else None,
         mineru_markdown=s.mineru_markdown,
         is_favorite=is_favorite(db, user.id, s.id),
+        source_format=getattr(version, "source_format", "pptx") or "pptx" if version else "pptx",
     )
 
 
@@ -323,10 +325,16 @@ def set_current_version(pres_id: str, vid: str, db: Session = Depends(get_db),
 @router.post("/slides/{slide_id}/exports/pptx")
 def export_slide(slide_id: str, db: Session = Depends(get_db),
                  user: User = Depends(get_current_user)) -> dict:
-    """触发单页 PPTX 导出(ADR-0002),返回导出任务结果。"""
+    """触发单页 PPTX 导出(ADR-0002),返回导出任务结果。
+    仅 .pptx 源可用(依赖 Open XML 关系图);ppt/pdf 无可拆部件 → 400。"""
     slide = db.get(Slide, slide_id)
     if not slide:
         raise HTTPException(404, "页面不存在")
+    # 格式门控:非 pptx 不支持单页导出
+    version = db.get(PresentationVersion, slide.version_id) if slide.version_id else None
+    src_fmt = getattr(version, "source_format", "pptx") if version else "pptx"
+    if src_fmt != "pptx":
+        raise HTTPException(400, f"单页 PPTX 导出仅支持 .pptx 源(当前为 .{src_fmt})")
     from app.tasks.export import export_single_slide_task
     # 同步等待结果(导出较快,结构遍历 + 存储约 1-2s)
     res = export_single_slide_task.apply(args=[slide_id]).get(timeout=120)
@@ -371,9 +379,16 @@ def download_source(pres_id: str, version_id: str | None = Query(None),
         raise HTTPException(status_code=404, detail="版本不存在")
     storage = get_storage()
     data = storage.get_object(version.source_object_key)
-    fname = version.original_filename or "source.pptx"
+    src_fmt = getattr(version, "source_format", "pptx") or "pptx"
+    mime_map = {
+        "pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "ppt": "application/vnd.ms-powerpoint",
+        "pdf": "application/pdf",
+    }
+    ext = src_fmt if src_fmt in ("pptx", "ppt", "pdf") else "pptx"
+    fname = version.original_filename or f"source.{ext}"
     return StreamingResponse(
         io.BytesIO(data),
-        media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        media_type=mime_map.get(src_fmt, mime_map["pptx"]),
         headers={"Content-Disposition": f'attachment; filename="{fname}"'},
     )

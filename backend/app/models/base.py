@@ -102,6 +102,8 @@ class PresentationVersion(Base, TimestampMixin):
     status: Mapped[str] = mapped_column(String(40), default="UPLOADING", nullable=False)
     file_size: Mapped[int] = mapped_column(BigInteger, default=0, nullable=False)
     original_filename: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    # 源文件格式:pptx(OpenXML 原生解析)/ ppt / pdf(渲染+OCR)。便于消费者按格式分支。
+    source_format: Mapped[str] = mapped_column(String(10), default="pptx", nullable=False)
 
     presentation: Mapped[Presentation] = relationship(
         back_populates="versions", foreign_keys=[presentation_id]

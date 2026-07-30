@@ -150,11 +150,17 @@ def render_preview_task(self, version_id: str) -> dict:  # noqa: ANN001
 
         workdir = tempfile.mkdtemp(prefix="render_")
         try:
-            pptx_path = os.path.join(workdir, "source.pptx")
-            with open(pptx_path, "wb") as f:
+            # 保留真实扩展名:soffice 按扩展选导入 filter(pptx/ppt/pdf)。
+            src_fmt = getattr(version, "source_format", None) or "pptx"
+            src_path = os.path.join(workdir, f"source.{src_fmt}")
+            with open(src_path, "wb") as f:
                 f.write(content)
 
-            pdf_path = _libreoffice_to_pdf(pptx_path, workdir)
+            if src_fmt == "pdf":
+                # PDF 输入无需 LibreOffice 转换,直接用。
+                pdf_path = src_path
+            else:
+                pdf_path = _libreoffice_to_pdf(src_path, workdir)
             # Store PDF
             with open(pdf_path, "rb") as f:
                 storage.put_object(preview_pdf_key(pres_id, version_id), f.read(),
@@ -166,6 +172,24 @@ def render_preview_task(self, version_id: str) -> dict:  # noqa: ANN001
             slides = (db.query(Slide).filter(Slide.version_id == version_id)
                       .order_by(Slide.page_no).all())
             slide_by_page = {s.page_no: s for s in slides}
+            # render-only 路径(ppt/pdf 无原生解析):尚无 slide 行,按渲染页数创建空行。
+            created_render_only = False
+            if not slide_by_page:
+                for i in range(1, len(image_pairs) + 1):
+                    s = Slide(
+                        version_id=version_id,
+                        page_no=i,
+                        title=None,
+                        native_text=None,
+                        notes_text=None,
+                        content_json={},
+                        fingerprint=None,
+                        parse_status="render_only",
+                    )
+                    db.add(s)
+                    slide_by_page[i] = s
+                db.flush()
+                created_render_only = True
 
             for i, (hi, thumb) in enumerate(image_pairs, start=1):
                 slide = slide_by_page.get(i)
@@ -195,13 +219,28 @@ def render_preview_task(self, version_id: str) -> dict:  # noqa: ANN001
             # If parse already done (PARSED), promote to BASIC_READY
             db.commit()
             db.refresh(version)
-            if version.status in ("RENDERING", "PARSED"):
+            if version.status in ("RENDERING", "PARSED", "UPLOADING"):
                 version.status = "BASIC_READY"
+            # render-only 路径:同步 page_count(无 parse 任务设它)。
+            if created_render_only:
+                version.page_count = len(image_pairs)
+                if pres:
+                    pres.page_count = len(image_pairs)
             mark_success(db, job)
             db.commit()
             logger.info("Rendered version %s: %d pages", version_id, len(image_pairs))
 
-            # Trigger MinerU enrichment (best-effort; fails silently if no mineru service)
+            # 视觉分析(render-only 路径也需要 AI 标签/摘要;best-effort)
+            if created_render_only:
+                try:
+                    from app.tasks.ai import analyze_visual_task
+                    for s in db.query(Slide).filter(Slide.version_id == version_id).all():
+                        analyze_visual_task.apply_async(args=[s.id], countdown=20)
+                except Exception:
+                    pass
+
+            # Trigger MinerU enrichment (best-effort;fails silently if no mineru service)
+            # 对 render-only(ppt/pdf)这是唯一文字来源,尤为重要。
             try:
                 from app.tasks.mineru import parse_mineru_task
                 parse_mineru_task.apply_async(args=[version_id], countdown=15)

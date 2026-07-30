@@ -85,6 +85,12 @@ def source_pptx_key(presentation_id: str, version_id: str) -> str:
     return f"presentations/{presentation_id}/versions/{version_id}/source.pptx"
 
 
+def source_key(presentation_id: str, version_id: str, ext: str = "pptx") -> str:
+    """源文件 object key,保留真实扩展名(LibreOffice 渲染按扩展选 filter)。"""
+    ext = ext.lstrip(".") or "pptx"
+    return f"presentations/{presentation_id}/versions/{version_id}/source.{ext}"
+
+
 def preview_pdf_key(presentation_id: str, version_id: str) -> str:
     return f"presentations/{presentation_id}/versions/{version_id}/preview.pdf"
 
