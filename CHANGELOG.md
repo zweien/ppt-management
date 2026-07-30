@@ -5,6 +5,22 @@
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-07-30
+
+本版聚焦:权限分层 + 私有素材、文件管理增强(重命名/批量/筛选/文件夹)、回收站永久删除。
+
+### ✨ 新功能
+
+- **私有素材(权限分层)**:`Presentation.visibility`(private/team)。private 仅 owner + 超管可见;team 全库可见(现有行为)。上传默认 team,可改 private。新增 `visibility_filter` helper,在全部查询点(列表/详情/搜索/下载/导出/版本/回收站)与 `hybrid_search` 的文本/向量召回强制过滤;`can_access` / `can_modify` 依赖贯穿所有单资源端点;`User.is_superuser` 默认改 False(migration 0008 回填存量 admin) (`0008_visibility_folders.py`)
+- **单层文件夹**:`Folder` 表(组织工具,不绑 visibility)。新增 `GET/POST/PATCH/DELETE /api/folders`;删除文件夹时其文件 `folder_id` 置空。文件页顶部文件夹下拉 + 行内「移动到文件夹」
+- **文件管理增强**:行内重命名、切可见性(team/private 图标)、批量删除 / 批量重新解析(`POST /api/presentations/batch`)、列表筛选(状态/文件夹/可见性)+ 排序(上传时间/页数/标题)+ 标题模糊搜索;`PATCH /api/presentations/{id}` 统一改名/移动/改可见性
+- **回收站永久删除**:单条「永久删除」(`DELETE /api/presentations/{id}/permanent`,清 MinIO 前缀 + 级联 DB:slide_tags/favorites/version_slide_matches/slides/jobs/versions)+ 顶部「清空回收站」(超管 `DELETE /api/trash/empty`)。`StorageClient` 加 `delete_object` / `delete_by_prefix` (boto3)
+- **上传者字段**:文件列表加「上传者」列(`owner_name`,批量解析避免 N+1)+ 「仅我上传的」checkbox(`mine` 参数)
+
+### 🐛 修复
+
+- **文件页筛选栏宽度**:下拉菜单被 `w-full` 拉成满宽,改用外层 `<div>` 限宽(状态/可见性/排序 112px、文件夹 144px),Select 内部 `w-full` 填满父级;搜索框独占一行,下拉 + checkbox 单行排列不换行
+
 ## [0.6.0] - 2026-07-30
 
 本版聚焦:UI 配置(品牌定制)+ 多格式上传(.ppt/.pdf)。

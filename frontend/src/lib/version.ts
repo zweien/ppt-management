@@ -123,6 +123,28 @@ export const CHANGELOG: ChangelogEntry[] = [
     sections: [],
   },
   {
+    version: "0.7.0",
+    date: "2026-07-30",
+    sections: [
+      {
+        kind: "✨ 新功能",
+        items: [
+          "私有素材(权限分层):visibility(private/team),private 仅 owner + 超管可见;visibility_filter 在全部查询点 + hybrid_search 文本/向量召回强制过滤;is_superuser 默认改 False",
+          "单层文件夹:Folder 表 + CRUD 路由,文件页文件夹下拉 + 行内「移动到文件夹」,删文件夹文件 folder_id 置空",
+          "文件管理增强:行内重命名、切可见性、批量删除/重新解析(/api/presentations/batch)、列表筛选(状态/文件夹/可见性)+ 排序 + 标题模糊搜索",
+          "回收站永久删除:单条永久删(清 MinIO 前缀 + 级联 DB)+ 顶部「清空回收站」(超管);StorageClient 加 delete_object / delete_by_prefix",
+          "上传者字段:文件列表「上传者」列(owner_name 批量解析)+ 「仅我上传的」checkbox",
+        ],
+      },
+      {
+        kind: "🐛 修复",
+        items: [
+          "文件页筛选栏宽度:下拉被 w-full 拉满宽,改外层 div 限宽(112/144px),搜索框独占一行,下拉 + checkbox 单行不换行",
+        ],
+      },
+    ],
+  },
+  {
     version: "0.6.0",
     date: "2026-07-30",
     sections: [
