@@ -58,6 +58,15 @@ services:
       MINERU_API_URL: ${MINERU_API_URL:-http://host.docker.internal:8765}
       EMBEDDING_SERVICE_URL: ${EMBEDDING_SERVICE_URL:-http://172.17.0.1:9997}
       DEFAULT_EMBEDDING_MODEL: ${DEFAULT_EMBEDDING_MODEL:-bge-m3}
+      # --- OIDC / SSO (Authentik) ---
+      OIDC_ENABLED: ${OIDC_ENABLED:-false}
+      OIDC_ISSUER: ${OIDC_ISSUER:-http://localhost:9000/application/o/ppt-library}
+      OIDC_INTERNAL_ISSUER: ${OIDC_INTERNAL_ISSUER:-http://host.docker.internal:9000/application/o/ppt-library}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
+      OIDC_REDIRECT_URI: ${OIDC_REDIRECT_URI:-http://localhost:13000/api/auth/callback}
+      OIDC_SUPERUSER_GROUP: ${OIDC_SUPERUSER_GROUP:-ppt-admins}
+      WEB_BASE_URL: ${WEB_BASE_URL:-http://localhost:13000}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
@@ -133,6 +142,8 @@ services:
       dockerfile: ../infra/docker/Dockerfile.web
       args:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:18000}
+        # 服务端 rewrites 代理目标(容器内用 docker 服务名)
+        API_BACKEND: http://api:8000
     environment:
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:18000}
       NEXTAUTH_URL: http://localhost:13000

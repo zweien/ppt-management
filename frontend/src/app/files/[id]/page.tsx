@@ -92,9 +92,8 @@ export default function FileDetailPage() {
 
   async function downloadSource(fileId: string) {
     try {
-      const token = localStorage.getItem("token");
       const res = await fetch(`${API_BASE}/api/presentations/${fileId}/download-source`, {
-        headers: { Authorization: `Bearer ${token}` },
+        credentials: "include", // 带 session cookie(SSO)
       });
       if (!res.ok) throw new Error("下载失败");
       const blob = await res.blob();

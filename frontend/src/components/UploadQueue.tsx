@@ -121,9 +121,8 @@ export default function UploadQueue({ registerEnqueue, onAnyDone }: UploadQueueP
         updateTask(task.id, { status: "cancelled" });
         pump();
       };
-      const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
       xhr.open("POST", `${API_BASE}/api/uploads`);
-      if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+      xhr.withCredentials = true; // 带 session cookie(SSO)
       xhr.send(form);
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps

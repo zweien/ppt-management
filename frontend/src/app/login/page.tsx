@@ -1,21 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, LogIn } from "lucide-react";
 import { API_BASE } from "@/lib/api";
 import { API_BASE as API_ROOT, fetchUiConfig } from "@/lib/version";
 import type { UiConfig } from "@/lib/version";
 import Button from "@/components/ui/Button";
-import { Input, Field } from "@/components/ui/Input";
 
 export default function LoginPage() {
-  const router = useRouter();
-  const [username, setUsername] = useState("admin");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
   const [ui, setUi] = useState<UiConfig | null>(null);
 
   useEffect(() => {
@@ -23,26 +15,9 @@ export default function LoginPage() {
     if (ui?.app_name) document.title = ui.app_name;
   }, [ui?.app_name]);
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setError("");
-    setLoading(true);
-    try {
-      const res = await fetch(`${API_BASE}/api/auth/login`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || "登录失败");
-      localStorage.setItem("token", data.access_token);
-      localStorage.setItem("user", JSON.stringify(data.user));
-      router.push("/files");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "登录失败");
-    } finally {
-      setLoading(false);
-    }
+  function loginWithSSO() {
+    // 顶层跳转到后端 /api/auth/login(后端 302 到 Authentik)
+    window.location.href = `${API_BASE}/api/auth/login`;
   }
 
   return (
@@ -63,43 +38,13 @@ export default function LoginPage() {
           <h1 className="text-2xl font-semibold text-ink tracking-tight tracking-display2">{ui?.app_name || "PPT 素材库"}</h1>
           <p className="text-sm text-body mt-1">请登录以继续</p>
         </div>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <Field label="用户名" htmlFor="username">
-            <Input
-              id="username"
-              type="text"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              inputSize="lg"
-              required
-            />
-          </Field>
-          <Field label="密码" htmlFor="password">
-            <Input
-              id="password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              inputSize="lg"
-              required
-            />
-          </Field>
-          {error && (
-            <div className="text-sm text-error-deep bg-error-soft border border-error/20 rounded-sm px-3 py-2">
-              {error}
-            </div>
-          )}
-          <Button type="submit" variant="primary" size="lg" block loading={loading}>
-            {loading ? "登录中..." : "登录"}
-          </Button>
-        </form>
+        <Button variant="primary" size="lg" block leadingIcon={<LogIn className="w-4 h-4" />} onClick={loginWithSSO}>
+          使用 Authentik 登录
+        </Button>
         <div className="mt-6 text-center">
-          <Link
-            href="/"
-            className="text-sm text-link hover:underline inline-flex items-center gap-1"
-          >
+          <a href="/" className="text-sm text-link hover:underline inline-flex items-center gap-1">
             <ArrowLeft className="w-3.5 h-3.5" /> 返回首页
-          </Link>
+          </a>
         </div>
       </div>
     </main>

@@ -26,8 +26,27 @@ class Settings(BaseSettings):
     APP_VERSION: str = __version__
     ENV: str = "dev"
     SECRET_KEY: str = "change-me-in-production"
-    # Token expiry (minutes)
+    # Token expiry (minutes) — 仅 fallback(非 SSO)模式用
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7
+
+    # --- OIDC / SSO (Authentik) ---
+    OIDC_ENABLED: bool = False
+    # OIDC_ISSUER:浏览器与后端都能访问的 issuer(authorize 跳转用)。
+    # OIDC_INTERNAL_ISSUER:后端容器内访问 issuer 的地址(discovery/token/userinfo);
+    #   浏览器在宿主机(localhost),但容器内 localhost 指向容器自身,故用 host.docker.internal。
+    OIDC_ISSUER: str = "http://localhost:9000/application/o/ppt-library"
+    OIDC_INTERNAL_ISSUER: str = "http://host.docker.internal:9000/application/o/ppt-library"
+    OIDC_CLIENT_ID: str = ""
+    OIDC_CLIENT_SECRET: str = ""
+    OIDC_REDIRECT_URI: str = "http://localhost:13000/api/auth/callback"
+    OIDC_SCOPES: str = "openid profile email groups"
+    OIDC_SUPERUSER_GROUP: str = "ppt-admins"
+    # 前端 base(回调成功后 302 跳回)
+    WEB_BASE_URL: str = "http://localhost:13000"
+    # session cookie
+    SESSION_SECRET: str = ""  # 空 = 用 SECRET_KEY
+    SESSION_MAX_AGE: int = 86400  # 秒(默认 1 天)
+    SESSION_COOKIE_NAME: str = "ppt_session"
 
     # --- Database ---
     POSTGRES_HOST: str = "postgres"

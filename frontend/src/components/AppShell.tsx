@@ -54,13 +54,13 @@ export default function AppShell({ children, title }: { children: React.ReactNod
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
 
   useEffect(() => {
-    const raw = localStorage.getItem("user");
-    const token = localStorage.getItem("token");
-    if (!token) {
-      router.replace("/login");
-      return;
-    }
-    if (raw) setUser(JSON.parse(raw));
+    // 认证:调 /api/auth/me(session cookie);401 → 跳 login。
+    import("@/lib/api").then(({ api }) => {
+      api
+        .get<{ username: string; is_superuser?: boolean }>("/api/auth/me")
+        .then(setUser)
+        .catch(() => router.replace("/login"));
+    });
     fetchVersion().then(setVersion);
     fetchUiConfig().then((c) => {
       setAppName(c.app_name);
@@ -83,9 +83,8 @@ export default function AppShell({ children, title }: { children: React.ReactNod
     : NAV_GROUPS;
 
   function logout() {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
-    router.replace("/login");
+    // 顶层跳转到后端 /api/auth/logout(清 session cookie + Authentik 单点登出)
+    window.location.href = `${API_BASE}/api/auth/logout`;
   }
 
   if (!user) return null;

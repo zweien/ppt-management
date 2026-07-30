@@ -1,5 +1,7 @@
-// API client. Uses NEXT_PUBLIC_API_URL for server-side in Docker.
-export const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+// API client. 前后端同源:Next.js rewrites 把 /api/* 代理到后端(见 next.config.js)。
+// 故用相对路径(API_BASE=""),session cookie 同域,无需跨域。
+// 认证:session cookie(httpOnly,由后端 SSO 设置)→ 所有请求带 credentials: include。
+export const API_BASE = "";
 
 export class ApiError extends Error {
   status: number;
@@ -10,15 +12,14 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
   const headers: Record<string, string> = {
     ...(init.headers as Record<string, string>),
   };
-  if (token) headers["Authorization"] = `Bearer ${token}`;
   if (init.body && !(init.body instanceof FormData)) {
     headers["Content-Type"] = "application/json";
   }
-  const res = await fetch(`${API_BASE}${path}`, { ...init, headers, cache: "no-store" });
+  // credentials: include 让跨域请求带上 session cookie
+  const res = await fetch(`${API_BASE}${path}`, { ...init, headers, cache: "no-store", credentials: "include" });
   if (!res.ok) {
     let msg = res.statusText;
     try {

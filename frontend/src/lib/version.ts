@@ -3,7 +3,8 @@
 // 前端启动时从 GET / 拉取并缓存到 localStorage(避免每个页面重复请求)。
 // CHANGELOG 内容作为结构化静态数据维护,与根目录 CHANGELOG.md 保持同步。
 
-export const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+// 前后端同源(Next 代理 /api/*),用相对路径。
+export const API_BASE = "";
 
 const VERSION_CACHE_KEY = "app_version";
 const VERSION_CACHE_TS_KEY = "app_version_ts";

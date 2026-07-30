@@ -16,7 +16,14 @@ logger = logging.getLogger(__name__)
 
 
 def bootstrap_admin() -> None:
-    """创建初始管理员账号(若不存在)。"""
+    """创建初始管理员账号(若不存在)。
+
+    SSO 模式(OIDC_ENABLED=true)跳过密码 admin — 用户通过 Authentik 登录后
+    按组成员身份判定超管。非 SSO 模式保留旧行为(密码 admin)。
+    """
+    if settings.OIDC_ENABLED:
+        logger.info("OIDC_ENABLED=true,跳过密码 admin bootstrap(用户走 SSO)")
+        return
     db: Session = SessionLocal()
     try:
         existing = db.query(User).filter(User.username == settings.ADMIN_USERNAME).first()

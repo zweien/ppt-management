@@ -5,6 +5,9 @@ WORKDIR /app
 ARG NEXT_PUBLIC_API_URL=http://localhost:18000
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 
+ARG API_BACKEND=http://localhost:18000
+ENV API_BACKEND=$API_BACKEND
+
 COPY package.json package-lock.json* ./
 RUN npm install --legacy-peer-deps
 

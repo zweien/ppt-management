@@ -60,9 +60,13 @@ class User(Base, TimestampMixin):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     username: Mapped[str] = mapped_column(String(100), unique=True, nullable=False, index=True)
-    password_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    password_hash: Mapped[str | None] = mapped_column(Text, nullable=True)  # SSO 用户无密码
     status: Mapped[str] = mapped_column(String(20), default="active", nullable=False)
     is_superuser: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    # SSO 字段:external_id = Authentik subject(OIDC sub);SSO 用户用此查/建。
+    external_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    display_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
 
 # ---------- Presentation ----------

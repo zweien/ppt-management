@@ -22,6 +22,9 @@ class UserOut(BaseModel):
     id: str
     username: str
     is_superuser: bool
+    email: str | None = None
+    display_name: str | None = None
+    sso: bool = False  # 是否 SSO 用户
 
 
 from pydantic import model_validator  # noqa: E402
@@ -33,4 +36,11 @@ TokenResponse.model_rebuild()
 class UserOutResolver:  # helper to avoid circular import order issues
     @staticmethod
     def from_model(user) -> UserOut:
-        return UserOut(id=user.id, username=user.username, is_superuser=user.is_superuser)
+        return UserOut(
+            id=user.id,
+            username=user.username,
+            is_superuser=user.is_superuser,
+            email=getattr(user, "email", None),
+            display_name=getattr(user, "display_name", None),
+            sso=bool(getattr(user, "external_id", None)),
+        )
