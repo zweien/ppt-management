@@ -61,6 +61,29 @@ class StorageClient:
         except ClientError:
             return False
 
+    def delete_object(self, key: str) -> None:
+        """删除单个对象(best-effort;失败仅记录)。"""
+        try:
+            self._client.delete_object(Bucket=settings.MINIO_BUCKET, Key=key)
+        except ClientError:
+            pass
+
+    def delete_by_prefix(self, prefix: str) -> int:
+        """删除某前缀下所有对象(如 presentations/{pid}/ 下的全部)。返回删除数。"""
+        deleted = 0
+        try:
+            paginator = self._client.get_paginator("list_objects_v2")
+            for page in paginator.paginate(Bucket=settings.MINIO_BUCKET, Prefix=prefix):
+                objects = page.get("Contents", [])
+                if not objects:
+                    continue
+                keys = [{"Key": o["Key"]} for o in objects]
+                self._client.delete_objects(Bucket=settings.MINIO_BUCKET, Delete={"Objects": keys})
+                deleted += len(keys)
+        except ClientError:
+            pass
+        return deleted
+
     def presigned_get_url(self, key: str, expires: int = 3600) -> str:
         return self._external_client.generate_presigned_url(
             "get_object",

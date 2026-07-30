@@ -45,6 +45,7 @@ def search_slides(
         favorite_user_id=user.id, favorite_only=favorite_only,
         include_historical=include_historical,
         topn=page * page_size,
+        user_id=user.id, superuser=user.is_superuser,
     )
 
     # sort override
@@ -83,7 +84,7 @@ def search_presentations(
     """文件聚合视图:按文件分组展示命中页面(SE-04)。"""
     storage = get_storage()
     tids = [t.strip() for t in tag_ids.split(",") if t.strip()] if tag_ids else []
-    hits = hybrid_search(db, q.strip(), tag_ids=tids, topn=page * page_size * 2)
+    hits = hybrid_search(db, q.strip(), tag_ids=tids, topn=page * page_size * 2, user_id=user.id, superuser=user.is_superuser)
 
     # group by presentation
     groups: dict[str, dict] = {}
@@ -117,7 +118,7 @@ def tag_facets(
 ) -> list[dict]:
     """标签分面:返回各标签及其在当前结果集中的命中数(供筛选 UI)。"""
     from app.models import SlideTag
-    hits = hybrid_search(db, q.strip(), topn=200)
+    hits = hybrid_search(db, q.strip(), topn=200, user_id=user.id, superuser=user.is_superuser)
     slide_ids = [h.slide.id for h in hits]
     if not slide_ids:
         return []

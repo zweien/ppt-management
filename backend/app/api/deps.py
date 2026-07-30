@@ -56,3 +56,20 @@ def require_superuser(user: User = Depends(get_current_user)) -> User:
             detail="需要管理员权限",
         )
     return user
+
+
+def can_access(user: User, presentation) -> bool:
+    """判断用户能否访问某 presentation(team 共享 或 自己的 private 或 超管)。"""
+    if user.is_superuser:
+        return True
+    if presentation.visibility == "team":
+        return True
+    return presentation.owner_id == user.id
+
+
+def can_modify(user: User, presentation) -> bool:
+    """判断用户能否修改/删除某 presentation(owner 自己 或 超管)。
+    team 文件任何登录用户可浏览,但改/删仍限 owner/super。"""
+    if user.is_superuser:
+        return True
+    return presentation.owner_id == user.id

@@ -8,7 +8,7 @@
 import logging
 from dataclasses import dataclass, field
 
-from sqlalchemy import func, text as _sa_text
+from sqlalchemy import func, or_, text as _sa_text
 from sqlalchemy.orm import Session
 
 from app.models import Favorite, ModelConfig, Slide, SlideTag, Tag
@@ -44,7 +44,7 @@ def _has_vector_search(db: Session) -> ModelConfig | None:
     )
 
 
-def _text_recall(db: Session, seg: str, topn: int, include_historical: bool = False) -> list[tuple[Slide, str, int]]:
+def _text_recall(db: Session, seg: str, topn: int, include_historical: bool = False, user_id: str | None = None, superuser: bool = False) -> list[tuple[Slide, str, int]]:
     """全文召回,返回 [(slide, pres_title, rank_index)]"""
     tsq = func.plainto_tsquery("simple", seg)
     from app.models import Presentation, PresentationVersion
@@ -57,11 +57,14 @@ def _text_recall(db: Session, seg: str, topn: int, include_historical: bool = Fa
     )
     if not include_historical:
         q = q.filter(Presentation.current_version_id == PresentationVersion.id)
+    # 可见性过滤:超管看全部;普通用户 = team 共享 + 自己的 private
+    if not superuser and user_id:
+        q = q.filter(or_(Presentation.visibility == "team", Presentation.owner_id == user_id))
     rows = q.order_by(_sa_text("rank desc")).limit(topn).all()
     return [(r[0], r[1], i + 1) for i, r in enumerate(rows)]
 
 
-def _vector_recall(db: Session, seg: str, topn: int, include_historical: bool = False) -> list[tuple[Slide, str, int]]:
+def _vector_recall(db: Session, seg: str, topn: int, include_historical: bool = False, user_id: str | None = None, superuser: bool = False) -> list[tuple[Slide, str, int]]:
     """向量召回(若有 default embedding 配置且有向量数据)"""
     if not _has_vector_search(db):
         return []
@@ -100,6 +103,9 @@ def _vector_recall(db: Session, seg: str, topn: int, include_historical: bool = 
     )
     if not include_historical:
         slides_q = slides_q.filter(Presentation.current_version_id == PresentationVersion.id)
+    # 可见性过滤
+    if not superuser and user_id:
+        slides_q = slides_q.filter(or_(Presentation.visibility == "team", Presentation.owner_id == user_id))
     slides_q = slides_q.all()
     by_id = {s.id: (s, t) for s, t in slides_q}
     out = []
@@ -129,6 +135,8 @@ def hybrid_search(
     favorite_only: bool = False,
     include_historical: bool = False,
     topn: int = 24,
+    user_id: str | None = None,
+    superuser: bool = False,
 ) -> list[HybridHit]:
     """执行混合检索,返回排序后的 HybridHit 列表。"""
     seg = query_segment(query) if query else ""
@@ -143,12 +151,14 @@ def hybrid_search(
         )
         if not include_historical:
             q = q.filter(Presentation.current_version_id == PresentationVersion.id)
+        if not superuser and user_id:
+            q = q.filter(or_(Presentation.visibility == "team", Presentation.owner_id == user_id))
         rows = q.order_by(Slide.created_at.desc()).limit(topn).all()
         return [HybridHit(slide=s, score=0.0, presentation_title=t) for s, t in rows]
 
     # recall both paths
-    text_hits = _text_recall(db, seg, EACH_TOPN, include_historical) if seg else []
-    vec_hits = _vector_recall(db, seg, EACH_TOPN, include_historical) if seg else []
+    text_hits = _text_recall(db, seg, EACH_TOPN, include_historical, user_id, superuser) if seg else []
+    vec_hits = _vector_recall(db, seg, EACH_TOPN, include_historical, user_id, superuser) if seg else []
 
     # collect candidates
     candidates: dict[str, HybridHit] = {}
@@ -174,6 +184,8 @@ def hybrid_search(
         )
         if not include_historical:
             q = q.filter(Presentation.current_version_id == PresentationVersion.id)
+        if not superuser and user_id:
+            q = q.filter(or_(Presentation.visibility == "team", Presentation.owner_id == user_id))
         rows = q.limit(EACH_TOPN).all()
         for s, t in rows:
             candidates.setdefault(s.id, HybridHit(slide=s, score=0.0, presentation_title=t))

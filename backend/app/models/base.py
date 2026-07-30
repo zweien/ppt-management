@@ -62,11 +62,20 @@ class User(Base, TimestampMixin):
     username: Mapped[str] = mapped_column(String(100), unique=True, nullable=False, index=True)
     password_hash: Mapped[str | None] = mapped_column(Text, nullable=True)  # SSO 用户无密码
     status: Mapped[str] = mapped_column(String(20), default="active", nullable=False)
-    is_superuser: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    is_superuser: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     # SSO 字段:external_id = Authentik subject(OIDC sub);SSO 用户用此查/建。
     external_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
     email: Mapped[str | None] = mapped_column(String(255), nullable=True)
     display_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+
+# ---------- Folder (单层文件归类,组织工具,不绑 visibility) ----------
+
+class Folder(Base, TimestampMixin):
+    __tablename__ = "folders"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    owner_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("users.id"), nullable=True)
 
 
 # ---------- Presentation ----------
@@ -83,6 +92,12 @@ class Presentation(Base, TimestampMixin):
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # denormalized page count of current version
     page_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    # 可见性:team(全库共享,默认)/ private(仅 owner + 超管)。团队部署的私有素材。
+    visibility: Mapped[str] = mapped_column(String(20), default="team", nullable=False, index=True)
+    # 文件夹归类(单层,可空)
+    folder_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("folders.id", ondelete="SET NULL"), nullable=True, index=True
+    )
 
     versions: Mapped[list["PresentationVersion"]] = relationship(
         back_populates="presentation", foreign_keys="PresentationVersion.presentation_id"

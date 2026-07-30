@@ -30,6 +30,17 @@ class PresentationOut(BaseModel):
     # 解析进度(仅处理中的文件有值,来自当前版本最新的 Job)
     parse_progress: Optional[int] = None
     parse_stage: Optional[str] = None
+    # 团队权限 + 文件夹
+    visibility: str = "team"
+    folder_id: Optional[str] = None
+    owner_id: Optional[str] = None
+    owner_name: Optional[str] = None  # 上传者用户名(便于展示)
+
+
+class FolderOut(BaseModel):
+    id: str
+    name: str
+    created_at: datetime
 
 
 class SlideOut(BaseModel):
