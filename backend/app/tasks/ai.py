@@ -11,11 +11,13 @@ from sqlalchemy.orm import Session
 from app.core.storage import get_storage
 from app.db.session import SessionLocal
 from app.models import (
-    Job, ModelConfig, PresentationVersion, Slide, SlideAIAnalysis, SlideEmbedding, SlideTag, Tag,
+    Job, ModelConfig, Presentation, PresentationVersion, Slide, SlideAIAnalysis, SlideElement, SlideEmbedding, SlideTag, Tag,
 )
+from app.services.element_ocr import ocr_image_element, read_image_bytes_from_pptx
 from app.services.jobs import find_or_create_job, mark_failed, mark_running, mark_success
 from app.services.model_provider import ModelProvider
-from app.services.search import build_text_search
+from app.services.search import build_text_search, index_slide
+from app.services.tokenizer import segment
 from app.services.vision_analyzer import analyze_slide_image
 
 from app.tasks.celery_app import celery_app
@@ -105,6 +107,22 @@ def analyze_visual_task(self, slide_id: str) -> dict:  # noqa: ANN001
         mark_success(db, job)
         db.commit()
         logger.info("Visual analysis done for slide %s", slide_id)
+
+        # SE-02:AI 分析完成后重建全文索引,让 ai_summary + AI 标签进入 text_search。
+        # 解析时 index_slide 在 basic.py 已建过索引,但 ai_summary 尚无;此处 ai_summary
+        # 已写入(上面 db.commit),重索引让它参与全文检索。向量由下方 build_embedding 重建。
+        try:
+            pres_title = (
+                db.query(Presentation.title)
+                .join(PresentationVersion, PresentationVersion.presentation_id == Presentation.id)
+                .filter(PresentationVersion.id == slide.version_id)
+                .scalar()
+            )
+            db.refresh(slide)
+            index_slide(db, slide, pres_title)
+        except Exception:
+            logger.exception("re-index slide %s after AI analysis failed (non-fatal)", slide_id)
+
         build_embedding_task.delay(slide_id)
         return {"slide_id": slide_id, "topics": analysis.get("topics")}
     except Exception as e:
@@ -217,3 +235,147 @@ def _maybe_promote_ready(db: Session, version: PresentationVersion) -> None:
     )
     if with_emb >= total and with_ai >= total:
         version.status = "READY"
+
+
+@celery_app.task(name="app.tasks.ai.reindex_all_with_ai", bind=True)
+def reindex_all_with_ai_task(self) -> dict:  # noqa: ANN001
+    """回填历史数据(SE-02):让所有已有 slide 的 ai_summary + AI 标签进入索引。
+
+    分两步:
+    1. 全文索引:所有 slide 重索引(无模型调用,快)。含 ai_summary + AI 标签文本。
+    2. 向量:仅对有 ai_summary 的 slide 入队 build_embedding(调模型,逐个异步)。
+
+    幂等:重跑安全(index_slide 覆盖 text_search;build_embedding 按 source_hash 跳过未变的)。
+    """
+    db: Session = SessionLocal()
+    try:
+        # 取所有未删除 presentation 的当前版本 slide(带 pres_title)
+        rows = (
+            db.query(Slide, Presentation.title)
+            .join(PresentationVersion, Slide.version_id == PresentationVersion.id)
+            .join(Presentation, PresentationVersion.presentation_id == Presentation.id)
+            .filter(Presentation.deleted_at.is_(None))
+            .filter(Presentation.current_version_id == PresentationVersion.id)
+            .all()
+        )
+        total = len(rows)
+        reindexed = 0
+        enqueued_emb = 0
+        for slide, pres_title in rows:
+            # 1. 全文索引重索引(自动含 ai_summary + AI 标签)
+            try:
+                index_slide(db, slide, pres_title)
+                reindexed += 1
+            except Exception:
+                logger.exception("reindex slide %s failed (skip)", slide.id)
+            # 2. 有 ai_summary 的 slide 才重建向量(否则向量语义不变,无需重跑)
+            if slide.ai_summary:
+                build_embedding_task.delay(slide.id)
+                enqueued_emb += 1
+        logger.info(
+            "reindex_all_with_ai done: %d/%d reindexed, %d embedding enqueued",
+            reindexed, total, enqueued_emb,
+        )
+        return {"total": total, "reindexed": reindexed, "embedding_enqueued": enqueued_emb}
+    finally:
+        db.close()
+
+
+@celery_app.task(name="app.tasks.ai.ocr_element", bind=True, max_retries=1)
+def ocr_element_task(self, element_id: str) -> dict:  # noqa: ANN001
+    """对单个图片元素 OCR(SE-04):读 PPTX 图片字节 → MinerU → 更新 text + embedding。
+
+    图片元素在解析时先存引用(text 空);此任务补 OCR 文字并入索引。
+    失败不阻断(图片元素 text 留空,检索降级到整页)。
+    """
+    db: Session = SessionLocal()
+    try:
+        el = db.get(SlideElement, element_id)
+        if not el or el.element_type != "picture" or not el.image_target:
+            return {"skipped": "not a picture element"}
+        if el.text:  # 已 OCR 过
+            return {"skipped": "already ocr'd"}
+
+        slide = db.get(Slide, el.slide_id)
+        if not slide:
+            return {"error": "slide not found"}
+        version = db.get(PresentationVersion, slide.version_id)
+        if not version or not version.source_object_key:
+            return {"error": "source pptx not found"}
+
+        # 读 PPTX 字节 → 读图片字节
+        storage = get_storage()
+        pptx_bytes = storage.get_object(version.source_object_key)
+        slide_path = f"ppt/slides/slide{slide.page_no}.xml"
+        img_bytes = read_image_bytes_from_pptx(pptx_bytes, slide_path, el.image_target)
+        if not img_bytes:
+            logger.warning("image bytes not found for element %s", element_id)
+            return {"error": "image bytes not found"}
+
+        # OCR(图片 → PDF → MinerU → 纯文字)
+        text = ocr_image_element(img_bytes)
+        if not text.strip():
+            logger.info("OCR returned empty for element %s", element_id)
+            el.text = ""
+            el.text_search = None
+            db.add(el)
+            db.commit()
+            return {"element_id": element_id, "text": ""}
+
+        # 更新元素 text + 全文索引
+        el.text = text
+        el.text_search = segment(text)
+        db.add(el)
+        db.commit()
+        logger.info("OCR done for element %s (text len=%d)", element_id, len(text))
+
+        # 重建该 slide 的元素向量(异步,复用 build_embedding 的 element 级逻辑)
+        # 简化:图片元素的 embedding 由统一的元素向量任务处理(见 element_embedding_task)
+        element_embedding_task.delay(element_id)
+        return {"element_id": element_id, "text_len": len(text)}
+    except Exception as e:
+        logger.exception("ocr_element failed for %s", element_id)
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
+@celery_app.task(name="app.tasks.ai.element_embedding", bind=True, max_retries=1)
+def element_embedding_task(self, element_id: str) -> dict:  # noqa: ANN001
+    """为单个元素生成向量(SE-04)。元素 text 有值时才 embed。
+
+    图片元素 OCR 后触发;文本框元素在解析后由批量任务触发。
+    """
+    db: Session = SessionLocal()
+    try:
+        el = db.get(SlideElement, element_id)
+        if not el or not el.text or not el.text.strip():
+            return {"skipped": "no text to embed"}
+        config = _get_default_config(db, "embedding")
+        if not config:
+            return {"skipped": "no default embedding config"}
+
+        provider = ModelProvider(config, timeout=60.0)
+        r = provider.embed(el.text)
+        if not r.success or not r.embedding:
+            logger.warning("element embedding failed for %s: %s", element_id, r.error)
+            el.embedding_status = "failed"
+            db.add(el)
+            db.commit()
+            return {"error": r.error}
+
+        vec_literal = "[" + ",".join(f"{x:.7f}" for x in r.embedding) + "]"
+        db.execute(
+            _sa_text("UPDATE slide_elements SET embedding = CAST(:vec AS vector), embedding_status = 'success' WHERE id = :eid"),
+            {"eid": element_id, "vec": vec_literal},
+        )
+        db.commit()
+        logger.info("element embedding done for %s (dim=%d)", element_id, len(r.embedding))
+        return {"element_id": element_id, "dim": len(r.embedding)}
+    except Exception as e:
+        logger.exception("element_embedding failed for %s", element_id)
+        db.rollback()
+        raise
+    finally:
+        db.close()

@@ -163,6 +163,32 @@ def _parse_slide(zf: zipfile.ZipFile, slide_path: str, page_no: int) -> ParsedSl
     rels_part = slide_path.replace("ppt/slides/", "ppt/slides/_rels/") + ".rels"
     rels = _parse_relationships(zf, rels_part)
 
+    # Pictures(SE-04 元素级索引):遍历 <p:pic> 提取图片元素(rId → target)。
+    # rId 从 <a:blip r:embed> 取,target 从本 slide 的 relationships 映射。
+    pictures = []
+    rid_to_target = {r["id"]: r["target"] for r in rels if r.get("id") and r.get("target")}
+    for pic in root.iter(f"{{{P_NS}}}pic"):
+        blip = pic.find(f".//{{{A_NS}}}blip")
+        if blip is None:
+            continue
+        rid = blip.get(f"{{{R_NS}}}embed") or blip.get(f"{{{R_NS}}}link")
+        if not rid:
+            continue
+        target = rid_to_target.get(rid)
+        # 图片位置(xfrm):x/y/cx/cy(EMU)。供后续高亮/定位(暂不索引,先存 raw)。
+        off = pic.find(f".//{{{A_NS}}}off")
+        ext = pic.find(f".//{{{A_NS}}}ext")
+        pos = {}
+        if off is not None:
+            pos["x"] = int(off.get("x", 0)); pos["y"] = int(off.get("y", 0))
+        if ext is not None:
+            pos["cx"] = int(ext.get("cx", 0)); pos["cy"] = int(ext.get("cy", 0))
+        pictures.append({
+            "rId": rid,
+            "target": target,        # 相对路径(如 ../media/image13.png)
+            "position": pos or None, # EMU 坐标(可空)
+        })
+
     # Notes
     notes_text = ""
     # notesSlide rel: target usually ../notesSlides/notesSlideN.xml
@@ -177,7 +203,7 @@ def _parse_slide(zf: zipfile.ZipFile, slide_path: str, page_no: int) -> ParsedSl
         except KeyError:
             pass
 
-    content_json = {"shapes": shapes, "tables": tables}
+    content_json = {"shapes": shapes, "tables": tables, "pictures": pictures}
 
     return ParsedSlide(
         page_no=page_no,

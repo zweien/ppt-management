@@ -19,6 +19,11 @@ logger = logging.getLogger(__name__)
 RRF_K = 60  # ADR-0003
 EACH_TOPN = 100
 RRF_BASE = 1.0
+# RRF 各召回路权重(SE-03):文本路 vs 向量路。ai_summary 入索引后,向量路质量提升,
+# 但关键词精确命中仍主要靠文本路。权重可调:向量路权重>1 强调语义,<1 强调关键词。
+RRF_WEIGHT_TEXT = 1.0    # 文本路权重
+RRF_WEIGHT_VECTOR = 1.0  # 向量路权重
+RRF_WEIGHT_ELEMENT = 1.2  # 元素路权重(SE-04):元素级命中(图片/文本框)更精确,略加权
 BONUS_TITLE_EXACT = 3.0
 BONUS_FILENAME_EXACT = 2.0
 BONUS_MANUAL_TAG = 2.5
@@ -117,6 +122,81 @@ def _vector_recall(db: Session, seg: str, topn: int, include_historical: bool = 
     return out
 
 
+def _element_recall(db: Session, seg: str, topn: int, include_historical: bool = False, user_id: str | None = None, superuser: bool = False) -> list[tuple[Slide, str, int]]:
+    """元素级全文召回(SE-04):查 slide_elements.text_search,聚合到父页面(slide)。
+
+    父文档检索:命中元素(图片/文本框/表格)→ 返回所属整页(slide)。
+    返回 [(slide, pres_title, rank_index)],按元素 ts_rank 排序。
+    """
+    tsq = func.plainto_tsquery("simple", seg)
+    from app.models import Presentation, PresentationVersion, SlideElement
+    # 查元素命中,取每个 slide 的最高 rank(聚合到父页面)
+    q = (
+        db.query(Slide, Presentation.title, func.max(func.ts_rank(func.to_tsvector("simple", SlideElement.text_search), tsq)).label("rank"))
+        .join(SlideElement, SlideElement.slide_id == Slide.id)
+        .join(PresentationVersion, Slide.version_id == PresentationVersion.id)
+        .join(Presentation, PresentationVersion.presentation_id == Presentation.id)
+        .filter(Presentation.deleted_at.is_(None))
+        .filter(func.to_tsvector("simple", SlideElement.text_search).op("@@")(tsq))
+        .group_by(Slide.id, Presentation.title)
+    )
+    if not include_historical:
+        q = q.filter(Presentation.current_version_id == PresentationVersion.id)
+    if not superuser and user_id:
+        q = q.filter(or_(Presentation.visibility == "team", Presentation.owner_id == user_id))
+    rows = q.order_by(_sa_text("rank desc")).limit(topn).all()
+    return [(r[0], r[1], i + 1) for i, r in enumerate(rows)]
+
+
+def _element_vector_recall(db: Session, seg: str, topn: int, include_historical: bool = False, user_id: str | None = None, superuser: bool = False) -> list[tuple[Slide, str, int]]:
+    """元素级向量召回(SE-04):查 slide_elements.embedding,聚合到父页面(slide)。
+
+    对每个 slide 取其元素的最近距离(min distance),聚合到父页面。
+    """
+    if not _has_vector_search(db):
+        return []
+    from app.models import Presentation, PresentationVersion, SlideElement
+    from app.services.model_provider import ModelProvider
+    config = _has_vector_search(db)
+    r = ModelProvider(config, timeout=30.0).embed(seg)
+    if not r.success or not r.embedding:
+        return []
+    vec_literal = "[" + ",".join(f"{x:.7f}" for x in r.embedding) + "]"
+    # 每个 slide 的最近元素距离
+    sql = _sa_text("""
+        SELECT se.slide_id, MIN(se.embedding <=> CAST(:vec AS vector)) AS dist
+        FROM slide_elements se
+        WHERE se.embedding IS NOT NULL
+        GROUP BY se.slide_id
+        ORDER BY dist
+        LIMIT :lim
+    """)
+    rows = db.execute(sql, {"vec": vec_literal, "lim": topn}).fetchall()
+    slide_ids = [str(rw[0]) for rw in rows]
+    if not slide_ids:
+        return []
+    slides_q = (
+        db.query(Slide, Presentation.title)
+        .join(PresentationVersion, Slide.version_id == PresentationVersion.id)
+        .join(Presentation, PresentationVersion.presentation_id == Presentation.id)
+        .filter(Presentation.deleted_at.is_(None))
+        .filter(Slide.id.in_(slide_ids))
+    )
+    if not include_historical:
+        slides_q = slides_q.filter(Presentation.current_version_id == PresentationVersion.id)
+    if not superuser and user_id:
+        slides_q = slides_q.filter(or_(Presentation.visibility == "team", Presentation.owner_id == user_id))
+    slides_q = slides_q.all()
+    by_id = {s.id: (s, t) for s, t in slides_q}
+    out = []
+    for i, rw in enumerate(rows):
+        sid = str(rw[0])
+        if sid in by_id:
+            s, t = by_id[sid]
+            out.append((s, t, i + 1))
+    return out
+
+
 def _apply_filters(base_slide_ids: set, db: Session, tag_ids: list[str]) -> set:
     """标签筛选:AND across dimensions, OR within. 简化版:命中任一标签即保留。"""
     if not tag_ids:
@@ -159,19 +239,31 @@ def hybrid_search(
     # recall both paths
     text_hits = _text_recall(db, seg, EACH_TOPN, include_historical, user_id, superuser) if seg else []
     vec_hits = _vector_recall(db, seg, EACH_TOPN, include_historical, user_id, superuser) if seg else []
+    # SE-04 元素级召回(图片/文本框/表格 → 聚合到父页面)
+    elem_text_hits = _element_recall(db, seg, EACH_TOPN, include_historical, user_id, superuser) if seg else []
+    elem_vec_hits = _element_vector_recall(db, seg, EACH_TOPN, include_historical, user_id, superuser) if seg else []
 
-    # collect candidates
+    # collect candidates(按各召回路权重加权 RRF)
     candidates: dict[str, HybridHit] = {}
     for s, t, rank in text_hits:
         h = candidates.setdefault(s.id, HybridHit(slide=s, score=0.0, presentation_title=t))
         h.text_rank = rank
-        h.score += RRF_BASE / (RRF_K + rank)
+        h.score += RRF_WEIGHT_TEXT * RRF_BASE / (RRF_K + rank)
         h.hit_reasons.append("正文命中")
     for s, t, rank in vec_hits:
         h = candidates.setdefault(s.id, HybridHit(slide=s, score=0.0, presentation_title=t))
         h.vector_rank = rank
-        h.score += RRF_BASE / (RRF_K + rank)
+        h.score += RRF_WEIGHT_VECTOR * RRF_BASE / (RRF_K + rank)
         h.hit_reasons.append("语义相似")
+    for s, t, rank in elem_text_hits:
+        h = candidates.setdefault(s.id, HybridHit(slide=s, score=0.0, presentation_title=t))
+        h.score += RRF_WEIGHT_ELEMENT * RRF_BASE / (RRF_K + rank)
+        h.hit_reasons.append("元素命中")
+    for s, t, rank in elem_vec_hits:
+        h = candidates.setdefault(s.id, HybridHit(slide=s, score=0.0, presentation_title=t))
+        h.score += RRF_WEIGHT_ELEMENT * RRF_BASE / (RRF_K + rank)
+        if "元素命中" not in h.hit_reasons:
+            h.hit_reasons.append("元素命中")
 
     # if pure filter (no query), start from all current slides
     if not seg:

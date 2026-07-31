@@ -287,3 +287,30 @@ class VersionSlideMatch(Base):
     match_type: Mapped[str] = mapped_column(String(20), nullable=False)
     score: Mapped[float | None] = mapped_column(Float)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+# ---------- Slide elements (SE-04 元素级索引) ----------
+
+class SlideElement(Base, TimestampMixin):
+    """slide 内的独立元素(文本框/图片),支持元素级索引 + 父文档检索(SE-04)。
+
+    element_type: textbox / placeholder:* / picture / table
+    text: 元素文本(文本框直接;图片为 OCR 文字;表格为拼合文字)
+    text_search: 元素全文索引(jieba)
+    embedding: 元素向量(migration 加 pgvector 列)
+    """
+    __tablename__ = "slide_elements"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    slide_id: Mapped[str] = mapped_column(String(36), ForeignKey("slides.id", ondelete="CASCADE"), nullable=False, index=True)
+    element_index: Mapped[int] = mapped_column(Integer, nullable=False)  # 元素在 slide 内的序号
+    element_type: Mapped[str] = mapped_column(String(40), nullable=False)  # textbox/picture/table/placeholder:*
+    text: Mapped[str | None] = mapped_column(Text)  # 元素文本(图片为 OCR 文字)
+    # 图片专属:引用路径(rId/target),便于后续取图/高亮
+    image_rId: Mapped[str | None] = mapped_column(String(40))
+    image_target: Mapped[str | None] = mapped_column(Text)
+    image_position: Mapped[dict[str, Any] | None] = mapped_column(JSONB)  # {x,y,cx,cy} EMU
+    text_search: Mapped[str | None] = mapped_column(TSVector)
+    # embedding: 由 migration 加 pgvector 列(模型不定义,避免 ORM 映射问题)
+    embedding_status: Mapped[str] = mapped_column(String(20), default="pending", nullable=False)
+
+    slide: Mapped[Slide] = relationship()

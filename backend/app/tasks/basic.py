@@ -11,7 +11,8 @@ from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 
 from app.db.session import SessionLocal
-from app.models import Job, Presentation, PresentationVersion, Slide
+from app.models import Job, Presentation, PresentationVersion, Slide, SlideElement
+from app.services.element_extractor import extract_and_index_elements
 from app.services.jobs import find_or_create_job, mark_failed, mark_running, mark_success
 from app.services.openxml import normalize_text_for_fingerprint, parse_pptx
 from app.services.search import index_slide
@@ -99,6 +100,13 @@ def parse_openxml_task(self, version_id: str) -> dict:  # noqa: ANN001
             # Build full-text index (app-layer jieba;含标题/正文/备注/表格/文件名 SE-01)
             index_slide(db, slide, pres_title)
 
+            # SE-04 元素级索引:提取文本框+图片引用入 slide_elements(同步,快)。
+            # 图片元素 text 空,OCR 由下方 ocr_element_task 异步补。
+            try:
+                extract_and_index_elements(db, slide, pres_title)
+            except Exception:
+                logger.warning("element extraction failed for slide %s (skip)", slide.id, exc_info=True)
+
         version.page_count = page_count
         # Move to BASIC_READY if render also done, else stay RENDERING-ish; set conservatively
         # (render task will finalize BASIC_READY)
@@ -110,6 +118,30 @@ def parse_openxml_task(self, version_id: str) -> dict:  # noqa: ANN001
         mark_success(db, job)
         db.commit()
         logger.info("Parsed version %s: %d slides", version_id, page_count)
+
+        # SE-04 图片元素 OCR(异步,逐个调 MinerU)。仅图片元素(text 空的 picture)。
+        try:
+            from app.tasks.ai import ocr_element_task
+            pic_elements = (
+                db.query(SlideElement)
+                .join(Slide, SlideElement.slide_id == Slide.id)
+                .filter(Slide.version_id == version_id, SlideElement.element_type == "picture", SlideElement.text.is_(None))
+                .all()
+            )
+            for el in pic_elements:
+                ocr_element_task.apply_async(args=[el.id], countdown=10)
+            # 文本框/表格元素的向量(异步,批量)。text 已填充的非图片元素。
+            from app.tasks.ai import element_embedding_task
+            text_elements = (
+                db.query(SlideElement)
+                .join(Slide, SlideElement.slide_id == Slide.id)
+                .filter(Slide.version_id == version_id, SlideElement.text.isnot(None))
+                .all()
+            )
+            for el in text_elements:
+                element_embedding_task.apply_async(args=[el.id], countdown=15)
+        except Exception:
+            logger.warning("element OCR/embedding enqueue failed for %s (skip)", version_id, exc_info=True)
 
         # Trigger render (parallel pipeline)
         from app.tasks.render import render_preview_task
