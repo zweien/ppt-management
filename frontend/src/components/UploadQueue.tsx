@@ -132,31 +132,30 @@ export default function UploadQueue({ registerEnqueue, onAnyDone }: UploadQueueP
   /** Process one task: hash → check → (duplicate? await) → upload. */
   const processTask = useCallback(
     async (task: UploadTask) => {
-      // Hash
+      // Hash(crypto.subtle 仅 secure context 可用:HTTPS 或 localhost)。
+      // 非 HTTPS 局域网(如 http://192.168.x.x)下 crypto.subtle 为 undefined →
+      // 跳过客户端哈希与预检,直接上传;后端 process_upload 仍会精确查重(sha256)。
       updateTask(task.id, { status: "hashing", progress: 0 });
       const sha = await computeSha256(task.file);
-      if (!sha) {
-        updateTask(task.id, { status: "error", error: "无法计算文件哈希(需 HTTPS 环境)" });
-        pump();
-        return;
-      }
-      // Check duplicate
-      updateTask(task.id, { status: "checking" });
-      try {
-        const check = await api.post<{ exists: boolean; presentation: { id: string; title: string } | null }>(
-          `/api/uploads/check`,
-          { sha256: sha, size: task.file.size },
-        );
-        if (check.exists && check.presentation) {
-          updateTask(task.id, {
-            status: "awaiting-duplicate",
-            duplicateTitle: check.presentation.title,
-            duplicateId: check.presentation.id,
-          });
-          return; // wait for user decision; does not consume a slot
+      if (sha) {
+        // Check duplicate(仅当能算哈希时)
+        updateTask(task.id, { status: "checking" });
+        try {
+          const check = await api.post<{ exists: boolean; presentation: { id: string; title: string } | null }>(
+            `/api/uploads/check`,
+            { sha256: sha, size: task.file.size },
+          );
+          if (check.exists && check.presentation) {
+            updateTask(task.id, {
+              status: "awaiting-duplicate",
+              duplicateTitle: check.presentation.title,
+              duplicateId: check.presentation.id,
+            });
+            return; // wait for user decision; does not consume a slot
+          }
+        } catch {
+          /* check 失败不阻断,继续上传 */
         }
-      } catch {
-        /* check 失败不阻断,继续上传 */
       }
       doUpload({ ...task });
     },

@@ -1,0 +1,144 @@
+# =============================================================================
+# 内网离线部署专用 compose
+# =============================================================================
+# 与根目录 docker-compose.yml 的区别:
+#   1. 删除 redis / minio 服务 —— 复用内网现有的(通过 REDIS_HOST/MINIO_ENDPOINT 指向)
+#   2. 自建服务(api/web/workers)用 image: 引用离线 load 的镜像,不再 build
+#   3. 基础服务只保留 postgres(自带 pgvector/pgvector:pg16,因 pgvector 是硬依赖)
+#   4. host.docker.internal 映射保留(若 MinerU/Authentik 在部署机本机可用)
+#
+# 用法(在内网目标机器):
+#   docker compose -f docker-compose.offline.yml --env-file .env up -d
+# =============================================================================
+
+services:
+  postgres:
+    # pgvector 扩展是硬依赖(migration 0001 强制 CREATE EXTENSION vector/pg_trgm)。
+    # 若内网 PG 已装 pgvector,可改为复用:删掉本服务 + POSTGRES_HOST 指向内网 PG。
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-pptlibrary}
+      POSTGRES_USER: ${POSTGRES_USER:-pptlibrary}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pptlibrary}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-pptlibrary} -d ${POSTGRES_DB:-pptlibrary}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    ports:
+      - "${POSTGRES_HOST_PORT:-15432}:5432"
+    restart: unless-stopped
+
+  api:
+    image: ppt-management-api:latest
+    environment: &app_env
+      # --- 复用内网 Redis(MinerU/Embedding/Authentik 同理,见 .env)---
+      REDIS_HOST: ${REDIS_HOST}
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      REDIS_DB: ${REDIS_DB:-0}
+      # --- 复用内网 MinIO ---
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT}
+      MINIO_EXTERNAL_ENDPOINT: ${MINIO_EXTERNAL_ENDPOINT}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+      MINIO_BUCKET: ${MINIO_BUCKET:-ppt-library}
+      MINIO_SECURE: ${MINIO_SECURE:-false}
+      # --- Postgres(默认用上面自带的;改 POSTGRES_HOST 可复用内网 PG)---
+      POSTGRES_HOST: ${POSTGRES_HOST:-postgres}
+      POSTGRES_PORT: ${POSTGRES_PORT:-5432}
+      POSTGRES_DB: ${POSTGRES_DB:-pptlibrary}
+      POSTGRES_USER: ${POSTGRES_USER:-pptlibrary}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pptlibrary}
+      # --- Bootstrap admin ---
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-changeme123}
+      # --- Secrets(生产必改)---
+      SECRET_KEY: ${SECRET_KEY}
+      APP_ENCRYPTION_KEY: ${APP_ENCRYPTION_KEY}
+      # --- 复用内网 AI 服务 ---
+      MINERU_API_URL: ${MINERU_API_URL}
+      EMBEDDING_SERVICE_URL: ${EMBEDDING_SERVICE_URL}
+      DEFAULT_EMBEDDING_MODEL: ${DEFAULT_EMBEDDING_MODEL:-bge-m3}
+      # --- OIDC / SSO(复用内网 Authentik)---
+      OIDC_ENABLED: ${OIDC_ENABLED:-true}
+      OIDC_ISSUER: ${OIDC_ISSUER}
+      OIDC_INTERNAL_ISSUER: ${OIDC_INTERNAL_ISSUER:-${OIDC_ISSUER}}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-ppt-library}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET}
+      OIDC_REDIRECT_URI: ${OIDC_REDIRECT_URI}
+      OIDC_SCOPES: ${OIDC_SCOPES:-openid profile email groups}
+      OIDC_SUPERUSER_GROUP: ${OIDC_SUPERUSER_GROUP:-ppt-admins}
+      WEB_BASE_URL: ${WEB_BASE_URL}
+      SESSION_MAX_AGE: ${SESSION_MAX_AGE:-86400}
+      # --- 上传限制 ---
+      UPLOAD_MAX_SIZE_MB: ${UPLOAD_MAX_SIZE_MB:-200}
+    extra_hosts:
+      # 若 MinerU/Authentik 部署在部署机本机,可用 host.docker.internal 访问;
+      # 否则直接用内网 IP(推荐),此映射无害保留。
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "${API_HOST_PORT:-18000}:8000"
+    # 启动时自动跑 migration,然后启动 gunicorn
+    command: >
+      sh -c "alembic upgrade head &&
+             gunicorn app.main:app -k uvicorn.workers.UvicornWorker -b 0.0.0.0:8000 -w 2 --timeout 120"
+    restart: unless-stopped
+
+  worker-basic:
+    image: ppt-management-worker-basic:latest
+    environment: *app_env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  worker-render:
+    image: ppt-management-worker-render:latest
+    environment: *app_env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  worker-mineru:
+    # 与 worker-basic 同一镜像(compose 服务名区分,命令覆盖队列)
+    image: ppt-management-worker-basic:latest
+    environment: *app_env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    command: >
+      celery -A app.tasks.celery_app worker -Q mineru --concurrency=1
+      --loglevel=info -n mineru@%h
+
+  worker-ai:
+    image: ppt-management-worker-basic:latest
+    environment: *app_env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    command: >
+      celery -A app.tasks.celery_app worker -Q ai --concurrency=2
+      --loglevel=info -n ai@%h
+
+  web:
+    image: ppt-management-web:latest
+    environment:
+      NEXT_PUBLIC_API_URL: ${WEB_BASE_URL}
+    depends_on:
+      - api
+    ports:
+      - "${WEB_HOST_PORT:-13000}:3000"
+    # 内网 MinIO 复用,不需本组件;logo 等经 api 代理
+    command: sh -c "npm run start"
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
