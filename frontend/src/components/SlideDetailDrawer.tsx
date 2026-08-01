@@ -34,6 +34,16 @@ interface SlideTagRow {
   origin: string;
 }
 
+interface SimilarSlide {
+  slide_id: string;
+  page_no: number;
+  title: string | null;
+  presentation_id: string;
+  presentation_title: string | null;
+  thumbnail_url: string | null;
+  distance: number | null;
+}
+
 type TabKey = "basic" | "text" | "mineru" | "tags" | "file";
 
 export default function SlideDetailDrawer({
@@ -60,11 +70,13 @@ export default function SlideDetailDrawer({
   const [noteEditing, setNoteEditing] = useState(false);
   const [fav, setFav] = useState(false);
   const [togglingFav, setTogglingFav] = useState(false);
+  const [similars, setSimilars] = useState<SimilarSlide[]>([]);
 
   useEffect(() => {
     if (!slide) {
       setDetail(null);
       setSlideTags([]);
+      setSimilars([]);
       return;
     }
     let cancelled = false;
@@ -72,15 +84,17 @@ export default function SlideDetailDrawer({
     setTab("basic");
     (async () => {
       try {
-        const [d, tags, all] = await Promise.all([
+        const [d, tags, all, sims] = await Promise.all([
           api.get<SlideDetail>(`/api/slides/${slide.id}`),
           api.get<SlideTagRow[]>(`/api/slides/${slide.id}/tags`),
           api.get<{ id: string; name: string; category: string | null }[]>(`/api/tags`),
+          api.get<SimilarSlide[]>(`/api/slides/${slide.id}/similar`).catch(() => [] as SimilarSlide[]),
         ]);
         if (!cancelled) {
           setDetail(d);
           setSlideTags(tags);
           setAllTags(all);
+          setSimilars(sims);
           setAddTagId("");
           setNoteDraft(d.user_note || "");
           setNoteEditing(false);
@@ -335,6 +349,40 @@ export default function SlideDetailDrawer({
                       <span className="text-mute">(未生成)</span>
                     )}
                   </Row>
+                  {similars.length > 0 && (
+                    <Row label="相似页面">
+                      <div className="space-y-1.5 flex-1">
+                        <span className="text-xs text-mute">
+                          库中有 {similars.length} 页与本页高度相似
+                        </span>
+                        <div className="flex gap-2 overflow-x-auto pb-1">
+                          {similars.map((sm) => (
+                            <Link
+                              key={sm.slide_id}
+                              href={`/files/${sm.presentation_id}`}
+                              className="shrink-0 w-24 group/sim"
+                              title={`${sm.presentation_title} P${sm.page_no}`}
+                            >
+                              <div className="bg-canvas border border-hairline rounded-sm overflow-hidden group-hover/sim:border-hairline-strong">
+                                <div className="aspect-video bg-canvas-soft-2 flex items-center justify-center overflow-hidden">
+                                  {sm.thumbnail_url ? (
+                                    // eslint-disable-next-line @next/next/no-img-element
+                                    <img src={sm.thumbnail_url} alt={`P${sm.page_no}`} className="w-full h-full object-contain" />
+                                  ) : (
+                                    <span className="text-[10px] text-mute">P{sm.page_no}</span>
+                                  )}
+                                </div>
+                                <div className="px-1.5 py-1">
+                                  <div className="text-[11px] text-ink truncate">P{sm.page_no}</div>
+                                  <div className="text-[10px] text-mute truncate">{sm.presentation_title}</div>
+                                </div>
+                              </div>
+                            </Link>
+                          ))}
+                        </div>
+                      </div>
+                    </Row>
+                  )}
                   <div className="flex gap-2">
                     <span className="w-20 shrink-0 text-mute">备注</span>
                     {noteEditing ? (

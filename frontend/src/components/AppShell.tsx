@@ -13,6 +13,7 @@ import {
   Trash2,
   Settings,
   LogOut,
+  Copy,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { API_BASE, fetchUiConfig, fetchVersion } from "@/lib/version";
@@ -34,6 +35,7 @@ const NAV_GROUPS: { label: string; items: { href: string; label: string; icon: R
     items: [
       { href: "/tags", label: "标签管理", icon: Tag },
       { href: "/favorites", label: "我的收藏", icon: Star },
+      { href: "/duplicates", label: "重复页面", icon: Copy },
     ],
   },
   {

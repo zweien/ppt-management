@@ -13,6 +13,7 @@ from app.api.routers.jobs import router as jobs_router
 from app.api.routers.search import router as search_router
 from app.api.routers.tags import router as tags_router
 from app.api.routers.folders import router as folders_router
+from app.api.routers.duplicates import router as duplicates_router
 from app.api.routers.model_configs import router as model_configs_router
 from app.api.routers.settings import router as settings_router
 from app.core.config import settings
@@ -41,6 +42,7 @@ def create_app() -> FastAPI:
     app.include_router(search_router)
     app.include_router(tags_router)
     app.include_router(folders_router)
+    app.include_router(duplicates_router)
     app.include_router(model_configs_router)
     app.include_router(settings_router)
 
