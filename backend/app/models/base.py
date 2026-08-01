@@ -289,6 +289,37 @@ class VersionSlideMatch(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
+# ---------- API keys (SE-06 机器认证:AI agent 调 compose 等开放接口) ----------
+
+class ApiKey(Base, TimestampMixin):
+    """API key(机器对机器认证)。只存 SHA-256 hash,完整 key 仅创建时返回一次。
+
+    认证:X-API-Key 头;权限等同 owner 用户(key 随用户撤销而失效,可单独 revoke)。
+    """
+    __tablename__ = "api_keys"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    name: Mapped[str] = mapped_column(String(80), nullable=False)  # 用途备注,如 "AI 拼 PPT agent"
+    key_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)  # sha256(key)
+    key_prefix: Mapped[str] = mapped_column(String(12), nullable=False)  # 前 8 位,便于识别
+    owner_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+# ---------- Compose jobs (SE-06 AI 拼 PPT 记录) ----------
+
+class ComposeJob(Base, TimestampMixin):
+    """AI 拼 PPT 任务记录:大纲 → 匹配素材 → 拼装结果(MinIO)。"""
+    __tablename__ = "compose_jobs"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    owner_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    outline: Mapped[list | None] = mapped_column(JSONB)      # 输入大纲
+    matches: Mapped[list | None] = mapped_column(JSONB)      # 每项匹配结果明细
+    object_key: Mapped[str | None] = mapped_column(Text)     # 产出 PPTX 在 MinIO 的 key
+    status: Mapped[str] = mapped_column(String(20), default="done", nullable=False)
+
+
 # ---------- Slide elements (SE-04 元素级索引) ----------
 
 class SlideElement(Base, TimestampMixin):

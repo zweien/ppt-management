@@ -1,6 +1,8 @@
 """models package."""
 from app.models.base import (
+    ApiKey,
     AppSetting,
+    ComposeJob,
     ExportFile,
     Favorite,
     Folder,
@@ -19,7 +21,9 @@ from app.models.base import (
 )
 
 __all__ = [
+    "ApiKey",
     "AppSetting",
+    "ComposeJob",
     "ExportFile",
     "Favorite",
     "Folder",

@@ -26,6 +26,15 @@ def get_current_user(
     )
     user_id: str | None = None
 
+    # 机器认证优先:X-API-Key(SE-06,AI agent 调开放接口)
+    api_key = request.headers.get("X-API-Key")
+    if api_key:
+        from app.services.api_keys import verify_api_key
+        key_user = verify_api_key(db, api_key)
+        if key_user and key_user.status == "active":
+            return key_user
+        raise creds_exc
+
     # SSO 模式:从 session cookie 解析
     if settings.OIDC_ENABLED:
         cookie_val = request.cookies.get(settings.SESSION_COOKIE_NAME)

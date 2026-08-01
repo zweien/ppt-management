@@ -14,6 +14,7 @@ import {
   Settings,
   LogOut,
   Copy,
+  KeyRound,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { API_BASE, fetchUiConfig, fetchVersion } from "@/lib/version";
@@ -42,6 +43,7 @@ const NAV_GROUPS: { label: string; items: { href: string; label: string; icon: R
     label: "系统",
     items: [
       { href: "/jobs", label: "任务中心", icon: ListChecks },
+      { href: "/api-keys", label: "API 密钥", icon: KeyRound },
       { href: "/trash", label: "回收站", icon: Trash2 },
     ],
   },

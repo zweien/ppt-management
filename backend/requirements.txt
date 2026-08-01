@@ -41,6 +41,9 @@ httpx==0.28.1
 Pillow==11.0.0
 imagehash==4.3.1
 
+# PPTX 生成(AI 拼 PPT,SE-06 图片拼装)
+python-pptx==1.0.2
+
 # Testing
 pytest==8.3.4
 pytest-asyncio==0.25.0
