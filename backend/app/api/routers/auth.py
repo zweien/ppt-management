@@ -28,6 +28,7 @@ from app.schemas.auth import (
     UserOutResolver,
 )
 from app.services import oidc
+from app.services import oidc_state
 from app.services.session import create_session, read_session
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -104,13 +105,11 @@ def _get_or_create_user(db: Session, info: dict) -> User:
 
 @router.get("/login")
 def sso_login(request: Request):
-    """302 到 Authentik authorize。state 存 cookie 防 CSRF。"""
+    """302 到 Authentik authorize。state 存 Redis 防 CSRF(host 无感,SE-07)。"""
     state = secrets.token_urlsafe(16)
     url = oidc.authorize_url(state)
-    resp = RedirectResponse(url)
-    # state 用一个短 cookie 校验回调(10 分钟)
-    resp.set_cookie("oidc_state", state, max_age=600, httponly=True, samesite="lax", path="/")
-    return resp
+    oidc_state.store_state(state)
+    return RedirectResponse(url)
 
 
 @router.get("/callback")
@@ -127,10 +126,9 @@ def sso_callback(
     if not code or not state:
         raise HTTPException(400, "回调缺少 code/state")
 
-    # 校验 state(防 CSRF)
-    cookie_state = request.cookies.get("oidc_state")
-    if not cookie_state or cookie_state != state:
-        raise HTTPException(400, "state 校验失败(CSRF)")
+    # 校验 state(防 CSRF;服务端存储,发起与回调 host 不同也能通过)
+    if not oidc_state.consume_state(state):
+        raise HTTPException(400, "state 校验失败(CSRF 或已过期)")
 
     try:
         tokens = oidc.exchange_code(code)
@@ -144,7 +142,6 @@ def sso_callback(
 
     resp = RedirectResponse(settings.WEB_BASE_URL or "/")
     _set_session_cookie(resp, user.id)
-    resp.delete_cookie("oidc_state", path="/")
     return resp
 
 
