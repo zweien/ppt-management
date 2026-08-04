@@ -64,6 +64,17 @@ const config: Config = {
         sans: ["var(--font-sans)", "Inter", "system-ui", "-apple-system", "sans-serif"],
         mono: ["var(--font-mono)", "ui-monospace", "SFMono-Regular", "Menlo", "monospace"],
       },
+      // 桌面端字号整体上调一档(只放大文字,不动布局间距):
+      // xs 12→13 / sm 14→15 / base 16→17 / lg 18→19 / xl 20→21。
+      // 3xl+ 展示级保持默认(已足够大)。行高同步微调保持阅读节奏。
+      fontSize: {
+        xs: ["13px", { lineHeight: "18px" }],
+        sm: ["15px", { lineHeight: "22px" }],
+        base: ["17px", { lineHeight: "26px" }],
+        lg: ["19px", { lineHeight: "26px" }],
+        xl: ["21px", { lineHeight: "28px" }],
+        "2xl": ["25px", { lineHeight: "30px" }],
+      },
       borderRadius: {
         none: "0px",
         xs: "4px",
