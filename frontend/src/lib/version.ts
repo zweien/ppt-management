@@ -123,6 +123,29 @@ export const CHANGELOG: ChangelogEntry[] = [
     sections: [],
   },
   {
+    version: "0.8.0",
+    date: "2026-08-04",
+    sections: [
+      {
+        kind: "✨ 新功能",
+        items: [
+          "AI 摘要入索引(检索根因修复):build_text_search 加 ai_summary + AI 标签;analyze_visual 后补全文索引;回填任务 reindex_all_with_ai;RRF 文本/向量路可配权重",
+          "元素级索引 + 父文档检索:解析提取图片元素(<p:pic> → rId → target);slide_elements 表(文本框/图片/表格);图片 OCR(图片 → PDF → MinerU);元素级召回聚合到父页面",
+          "页面级去重 + 相似提示:fingerprint 精确分组 + phash 聚类;GET /api/duplicates + /api/slides/{id}/similar;/duplicates 管理页 + 详情相似行",
+          "AI 拼 PPT 开放 API + API Key 认证:api_keys 表 + X-API-Key;POST /api/compose 大纲检索 top1 → python-pptx 图片拼装;/api-keys 管理页",
+        ],
+      },
+      {
+        kind: "🐛 修复",
+        items: [
+          "去重检测空文本页误报(空串哈希),exact/similar 均跳过空文本页",
+          "duplicates 路由漏 /api 前缀导致 404",
+          "上传 SHA-256 降级:HTTP 局域网下 crypto.subtle 不可用时直接上传,后端仍精确查重",
+        ],
+      },
+    ],
+  },
+  {
     version: "0.7.0",
     date: "2026-07-30",
     sections: [

@@ -5,6 +5,23 @@
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-08-04
+
+本版聚焦:检索质量根因修复 + 元素级索引 + 页面去重 + AI 拼 PPT 开放 API(四个阶段的能力增强)。
+
+### ✨ 新功能
+
+- **AI 摘要入索引(检索根因修复)**:`build_text_search` 加 `ai_summary` + AI 标签文本(SE-02),修复"AI 语义完全不参与检索"的根因(关键词/向量检索都不准);`analyze_visual` 完成后补全文索引;新增回填任务 `reindex_all_with_ai`(历史数据重索引 + 向量重建);RRF 加文本/向量路可配权重(SE-03)
+- **元素级索引 + 父文档检索**:解析器提取图片元素(`<p:pic>` → rId → target → position);新表 `slide_elements`(文本框/图片/表格 + text_search + embedding(1024),migration 0009);图片 OCR 服务(图片 → 单页 PDF → MinerU → 纯文字,复用现有 MinerU);元素级召回(全文+向量)→ 聚合到父页面,RRF 加元素路权重
+- **页面级去重 + 相似提示**:`services/dedup.py` — fingerprint 精确分组(完全重复)+ phash 汉明距离 ≤8 union-find 聚类(高度相似);`GET /api/duplicates` 重复组列表 + `GET /api/slides/{id}/similar` 详情提示;前端 `/duplicates` 重复组管理页(组内缩略图对比、视觉距离)+ 详情抽屉「相似页面」行
+- **AI 拼 PPT 开放 API + API Key 机器认证**:`api_keys` 表(sha256 hash 存储)+ X-API-Key 认证(deps 机器认证优先分支);`POST /api/compose` — 大纲 `[{section,query}]` 逐项混合检索 top1 → python-pptx 图片拼装(16:9 满幅 preview PNG + 备注来源)→ MinIO,响应含 matches 明细 + download_url;前端 `/api-keys` 管理页(创建/复制/撤销 + 调用示例)
+
+### 🐛 修复
+
+- 去重检测空文本页误报:空串 SHA-256 导致所有无文本页被归为"完全重复",exact 分组与 similar 查询均跳过空文本页
+- duplicates 路由漏 `prefix="/api"` 导致 404
+- 上传 SHA-256 降级:HTTP 局域网(非 localhost)下 `crypto.subtle` 不可用,跳过客户端哈希预检直接上传(后端仍精确查重)
+
 ## [0.7.0] - 2026-07-30
 
 本版聚焦:权限分层 + 私有素材、文件管理增强(重命名/批量/筛选/文件夹)、回收站永久删除。
