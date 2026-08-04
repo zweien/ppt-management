@@ -369,12 +369,12 @@ export default function SlideDetailDrawer({
                                     // eslint-disable-next-line @next/next/no-img-element
                                     <img src={sm.thumbnail_url} alt={`P${sm.page_no}`} className="w-full h-full object-contain" />
                                   ) : (
-                                    <span className="text-[10px] text-mute">P{sm.page_no}</span>
+                                    <span className="text-[14px] text-mute">P{sm.page_no}</span>
                                   )}
                                 </div>
                                 <div className="px-1.5 py-1">
-                                  <div className="text-[11px] text-ink truncate">P{sm.page_no}</div>
-                                  <div className="text-[10px] text-mute truncate">{sm.presentation_title}</div>
+                                  <div className="text-[13px] text-ink truncate">P{sm.page_no}</div>
+                                  <div className="text-[14px] text-mute truncate">{sm.presentation_title}</div>
                                 </div>
                               </div>
                             </Link>
@@ -464,7 +464,7 @@ export default function SlideDetailDrawer({
                               {t.tag.name}
                               {t.tag.category && <span className="text-mute">{t.tag.category}</span>}
                               {isAi && (
-                                <span className="text-[10px] font-mono uppercase opacity-70">AI</span>
+                                <span className="text-[14px] font-mono uppercase opacity-70">AI</span>
                               )}
                               <button
                                 type="button"

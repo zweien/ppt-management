@@ -116,7 +116,7 @@ export default function AppShell({ children, title }: { children: React.ReactNod
         <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-5">
           {navGroups.map((group) => (
             <div key={group.label}>
-              <div className="px-2 mb-1.5 text-[11px] font-mono uppercase tracking-wider text-mute">
+              <div className="px-2 mb-1.5 text-[13px] font-mono uppercase tracking-wider text-mute">
                 {group.label}
               </div>
               <div className="space-y-0.5">

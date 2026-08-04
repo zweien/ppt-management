@@ -132,11 +132,11 @@ export default function DuplicatesPage() {
                           <div className="text-xs font-medium text-ink truncate">
                             P{s.page_no} {s.title || "(无标题)"}
                           </div>
-                          <div className="text-[11px] text-mute truncate">
+                          <div className="text-[13px] text-mute truncate">
                             {s.presentation_title}
                           </div>
                           {s.distance !== null && (
-                            <div className="text-[11px] text-mute">
+                            <div className="text-[13px] text-mute">
                               视觉距离 {s.distance}
                               {s.distance === 0 ? "(几乎一致)" : s.distance <= 4 ? "(极相似)" : ""}
                             </div>

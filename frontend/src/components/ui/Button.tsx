@@ -31,7 +31,7 @@ const VARIANT: Record<Variant, string> = {
 
 const SIZE: Record<Size, string> = {
   // nav-scale: 14px label, 6px radius flavor, tighter padding.
-  sm: "h-7 px-2 text-[13px] font-medium gap-1",
+  sm: "h-7 px-2 text-[15px] font-medium gap-1",
   md: "h-9 px-3 text-sm font-medium gap-1.5",
   // marketing-scale: 16px label.
   lg: "h-12 px-4 text-base font-medium gap-2",

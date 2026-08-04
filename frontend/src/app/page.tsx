@@ -27,7 +27,7 @@ export default function Home() {
             className="w-14 h-14 rounded-md object-contain mx-auto mb-6"
           />
         )}
-        <span className="inline-block text-[12px] font-mono uppercase tracking-wider text-body bg-canvas/80 backdrop-blur border border-hairline rounded-pill px-3 py-1 mb-6">
+        <span className="inline-block text-[14px] font-mono uppercase tracking-wider text-body bg-canvas/80 backdrop-blur border border-hairline rounded-pill px-3 py-1 mb-6">
           {ui?.app_name || "PPT 素材库"}
         </span>
         <h1 className="text-[44px] leading-[1.05] font-semibold tracking-tight tracking-display1 text-ink mb-4">

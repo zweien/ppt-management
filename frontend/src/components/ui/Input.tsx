@@ -6,7 +6,7 @@ type Size = "xs" | "sm" | "md" | "lg";
 
 const SIZE: Record<Size, string> = {
   xs: "h-7 text-xs px-2.5", // 28px — inline toolbar controls (aligns w/ Checkbox/Tabs)
-  sm: "h-8 text-[13px] px-3", // 32px — tight forms
+  sm: "h-8 text-[15px] px-3", // 32px — tight forms
   md: "h-10 text-sm px-3", // 40px — default (--geist-form-height)
   lg: "h-12 text-base px-3", // 48px — hero CTAs
 };
@@ -74,7 +74,7 @@ export function Field({
   return (
     <div className={cn("space-y-1.5", className)}>
       {label && (
-        <label htmlFor={htmlFor} className="block text-[13px] font-medium text-body">
+        <label htmlFor={htmlFor} className="block text-[15px] font-medium text-body">
           {label}
         </label>
       )}

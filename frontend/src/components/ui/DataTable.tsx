@@ -27,7 +27,7 @@ export function TH({ className, children, ...rest }: ThHTMLAttributes<HTMLTableC
   return (
     <th
       className={cn(
-        "text-left font-normal uppercase font-mono text-[11px] tracking-wide text-mute px-4 py-3 whitespace-nowrap",
+        "text-left font-normal uppercase font-mono text-[13px] tracking-wide text-mute px-4 py-3 whitespace-nowrap",
         className,
       )}
       {...rest}

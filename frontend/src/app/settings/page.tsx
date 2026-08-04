@@ -186,13 +186,13 @@ function FieldRow({
   return (
     <div className="space-y-1.5">
       <div className="flex items-center gap-2">
-        <label className="text-[13px] font-medium text-body">{field.label}</label>
+        <label className="text-[15px] font-medium text-body">{field.label}</label>
         {field.restart_required && (
           <span className="inline-flex items-center gap-1 text-xs text-warning-deep">
             <AlertTriangle className="w-3 h-3" /> 需重启生效
           </span>
         )}
-        <span className="text-[11px] font-mono text-mute ml-auto">{field.key}</span>
+        <span className="text-[13px] font-mono text-mute ml-auto">{field.key}</span>
       </div>
       {field.type === "int" && (
         <Input
